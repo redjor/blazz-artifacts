@@ -1,0 +1,83 @@
+import { Hono, type MiddlewareHandler } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
+import type { Config } from '../config.ts';
+import { verifySecret, type Keys } from '../crypto.ts';
+import type { Db } from '../db.ts';
+import { registerFavicon } from '../favicon.ts';
+import { clientIp, errorBody, HttpError } from '../http.ts';
+import type { RateLimiter } from '../ratelimit.ts';
+import { createApiRoutes } from './api.ts';
+import { csrfGuard, endSession, originGuard, requireSession, sessionMiddleware, startSession, tokenMiddleware, type AdminEnv } from './auth.ts';
+import { serveSpa } from './spa.ts';
+
+export const ADMIN_CSP = "default-src 'self'; img-src 'self' data:; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+
+export interface AdminDeps { db: Db; cfg: Config; keys: Keys; loginLimiter: RateLimiter; webDist?: string; now?: () => number }
+
+// Admin server: keep it reachable only from a private network (VPN, tailnet, allow-list).
+export function createAdminApp(deps: AdminDeps): Hono<AdminEnv> {
+  const { db, cfg, loginLimiter } = deps;
+  const nowMs = () => (deps.now ?? Date.now)();
+  const app = new Hono<AdminEnv>();
+
+  app.use('*', async (c, next) => {
+    await next();
+    c.res.headers.set('Content-Security-Policy', ADMIN_CSP);
+    c.res.headers.set('X-Content-Type-Options', 'nosniff');
+    c.res.headers.set('Referrer-Policy', 'same-origin');
+    c.res.headers.set('X-Frame-Options', 'DENY');
+  });
+
+  registerFavicon(app);
+
+  app.use('/api/*', tokenMiddleware(cfg, loginLimiter), originGuard(cfg), sessionMiddleware(db));
+
+  app.get('/api/session', (c) => {
+    const session = c.get('session');
+    return c.json({ authenticated: !!session, csrfToken: session?.csrf_token ?? null, viaToken: c.get('viaToken') });
+  });
+
+  // The API token never gives access to session management.
+  const noToken: MiddlewareHandler<AdminEnv> = async (c, next) => {
+    if (c.get('viaToken')) throw new HttpError(403, 'token_not_allowed');
+    await next();
+  };
+
+  app.post('/api/login', noToken, bodyLimit({ maxSize: 4096, onError: (c) => c.json(errorBody('payload_too_large'), 413) }), async (c) => {
+    const client = clientIp(c);
+    if (loginLimiter.isBlocked('login', client)) throw new HttpError(429, 'too_many_attempts');
+    // The failure is counted immediately (before any await) so concurrent requests cannot bypass the limit.
+    loginLimiter.recordFailure('login', client);
+    const body = (await c.req.json().catch(() => ({}))) as { password?: unknown };
+    const password = typeof body.password === 'string' ? body.password : '';
+    if (!cfg.adminPasswordHash || !(await verifySecret(password, cfg.adminPasswordHash))) {
+      throw new HttpError(401, 'wrong_password');
+    }
+    loginLimiter.forgive('login', client);
+    return c.json({ csrfToken: startSession(c, db, nowMs()) });
+  });
+
+  app.use('/api/*', requireSession, csrfGuard);
+
+  app.post('/api/logout', noToken, (c) => {
+    endSession(c, db);
+    return c.json({ ok: true });
+  });
+
+  app.route('/api', createApiRoutes(deps));
+  app.all('/api/*', () => {
+    throw new HttpError(404, 'unknown_route');
+  });
+
+  if (deps.webDist) {
+    const dist = deps.webDist;
+    app.get('*', (c) => serveSpa(c, dist));
+  }
+
+  app.onError((err, c) => {
+    if (err instanceof HttpError) return c.json(errorBody(err.code, err.params), err.status);
+    console.error('[admin]', err);
+    return c.json(errorBody('internal'), 500);
+  });
+  return app;
+}

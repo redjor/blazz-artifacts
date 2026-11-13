@@ -1,0 +1,70 @@
+import { resolve } from 'node:path';
+import { parseLocaleSetting, type LocaleSetting } from './i18n.ts';
+
+export interface Config {
+  dataDir: string;
+  hubSecret: Buffer;
+  adminPasswordHash: string;
+  apiTokenHash: string;
+  publicHubUrl: string;
+  publicContentUrl: string;
+  maxUploadBytes: number;
+  zipMaxFiles: number;
+  zipMaxBytes: number;
+  adminBind: string;
+  contentBind: string;
+  /** Language of visitor pages (HUB_LOCALE): en (default), fr, or auto (Accept-Language). */
+  locale: LocaleSetting;
+}
+
+function required(env: NodeJS.ProcessEnv, name: string): string {
+  const value = env[name];
+  if (!value) throw new Error(`Missing variable ${name}`);
+  return value;
+}
+
+function positiveInt(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
+  const raw = env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) throw new Error(`${name} must be a positive integer`);
+  return n;
+}
+
+function publicOrigin(env: NodeJS.ProcessEnv, name: string): string {
+  const url = new URL(required(env, name));
+  const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  if (url.protocol !== 'https:' && !(local && url.protocol === 'http:')) {
+    throw new Error(`${name} must be an https URL`);
+  }
+  return url.origin;
+}
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const hubSecret = Buffer.from(required(env, 'HUB_SECRET'), 'base64');
+  if (hubSecret.length < 32) {
+    throw new Error('HUB_SECRET must contain at least 32 bytes (openssl rand -base64 48)');
+  }
+  const adminPasswordHash = env.ADMIN_PASSWORD_HASH ?? '';
+  if (adminPasswordHash && !adminPasswordHash.startsWith('scrypt:')) {
+    throw new Error('ADMIN_PASSWORD_HASH must start with scrypt: (src/scripts/hash-password.ts)');
+  }
+  const apiTokenHash = env.API_TOKEN_HASH ?? '';
+  if (apiTokenHash && !/^[0-9a-f]{64}$/.test(apiTokenHash)) {
+    throw new Error('API_TOKEN_HASH must be a hexadecimal SHA-256 (src/scripts/new-api-token.ts)');
+  }
+  return {
+    dataDir: resolve(env.DATA_DIR || '/data'),
+    hubSecret,
+    adminPasswordHash,
+    apiTokenHash,
+    publicHubUrl: publicOrigin(env, 'PUBLIC_HUB_URL'),
+    publicContentUrl: publicOrigin(env, 'PUBLIC_CONTENT_URL'),
+    maxUploadBytes: positiveInt(env, 'MAX_UPLOAD_MB', 100) * 1024 * 1024,
+    zipMaxFiles: positiveInt(env, 'ZIP_MAX_FILES', 2000),
+    zipMaxBytes: positiveInt(env, 'ZIP_MAX_BYTES', 209715200),
+    adminBind: env.ADMIN_BIND || '127.0.0.1',
+    contentBind: env.CONTENT_BIND || '127.0.0.1',
+    locale: parseLocaleSetting(env.HUB_LOCALE),
+  };
+}

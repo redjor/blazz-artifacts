@@ -1,0 +1,303 @@
+@import "tailwindcss";
+
+/* Jetons : papier chaud en clair, gris chaud presque noir en sombre (suit prefers-color-scheme). */
+:root {
+  color-scheme: light dark;
+  --canvas: #faf7f2;
+  --surface: #fffdf9;
+  --surface-2: #f1ebe2;
+  --surface-3: #e7dfd3;
+  --line: #e4dccf;
+  --line-strong: #cfc5b6;
+  --ink: #1f1c18;
+  --muted: #6a6359;
+  --ring: #2f5fd0;
+  --danger: #b42318;
+  --ok: #1d7348;
+  --warn: #8f5300;
+  --paper: #fffefb;
+  --paper-back: #f6f1e9;
+  --paper-line: #e2dace;
+  --paper-ink: #24211c;
+  --paper-muted: #6f675c;
+  --scrim: oklch(0.2 0.01 70 / 0.35);
+  /* Audience chart: a single series (checked: lightness band, chroma, contrast ≥ 3:1 on --surface). */
+  --chart-bar: #3d5fc4;
+  /* Folders: filled pictogram (≥ 3:1 on --surface), mosaic background barely recessed from the card. */
+  --folder: #3f6fd1;
+  --folder-mosaic: #f6f1e9;
+  --texture: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 84'%3E%3Cg fill='none' stroke='%23000' stroke-opacity='.045' stroke-width='7' stroke-linecap='round'%3E%3Cpath d='M-12 58C14 14 38 92 66 50S108 4 132 38'/%3E%3Cpath d='M-12 86C24 58 52 104 88 70S124 58 134 78'/%3E%3C/g%3E%3C/svg%3E");
+
+  /* Couleurs par type : tuile, bande de carte, pictogramme. */
+  --markdown-tile: #d8e2fa; --markdown-band: #e2e8f6; --markdown-glyph: #2546a3;
+  --html-tile: #f5dccc;     --html-band: #f2e3d8;     --html-glyph: #974018;
+  --site-tile: #e1dbfa;     --site-band: #e7e2f6;     --site-glyph: #4b34b4;
+  --pdf-tile: #f6d5d1;      --pdf-band: #f3dfdc;      --pdf-glyph: #a42f28;
+  --json-tile: #f4d4e3;     --json-band: #f2e0e9;     --json-glyph: #98285c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #1b1b1b;
+    --surface: #232323;
+    --surface-2: #2f2f2f;
+    --surface-3: #3a3a3a;
+    --line: #313131;
+    --line-strong: #474747;
+    --ink: #ededeb;
+    --muted: #a3a09a;
+    --ring: #8fb4ff;
+    --danger: #ff8f84;
+    --ok: #74d3a2;
+    --warn: #f1b65c;
+    --paper: #1d1d1d;
+    --paper-back: #262626;
+    --paper-line: #3b3b3b;
+    --paper-ink: #ececea;
+    --paper-muted: #a3a09a;
+    --scrim: oklch(0 0 0 / 0.6);
+    --chart-bar: #6f8fe6;
+    --folder: #a8c7fa;
+    --folder-mosaic: #2a2a2a;
+    --texture: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 84'%3E%3Cg fill='none' stroke='%23fff' stroke-opacity='.055' stroke-width='7' stroke-linecap='round'%3E%3Cpath d='M-12 58C14 14 38 92 66 50S108 4 132 38'/%3E%3Cpath d='M-12 86C24 58 52 104 88 70S124 58 134 78'/%3E%3C/g%3E%3C/svg%3E");
+
+    --markdown-tile: #233c8a; --markdown-band: #1f2c56; --markdown-glyph: #b4c8ff;
+    --html-tile: #5a2915;     --html-band: #44261a;     --html-glyph: #f4b896;
+    --site-tile: #3b2a92;     --site-band: #32245c;     --site-glyph: #cdc1ff;
+    --pdf-tile: #6b2020;      --pdf-band: #481f1f;      --pdf-glyph: #ffb4ab;
+    --json-tile: #5b1938;     --json-band: #42192d;     --json-glyph: #f8afd0;
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-ring: var(--ring);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-paper: var(--paper);
+  --color-paper-ink: var(--paper-ink);
+  --color-paper-muted: var(--paper-muted);
+  --color-paper-line: var(--paper-line);
+  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+}
+
+@layer base {
+  html {
+    background: var(--canvas);
+    color: var(--ink);
+    accent-color: var(--ink);
+    caret-color: var(--ring);
+    scrollbar-color: var(--line-strong) transparent;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  ::selection { background: color-mix(in oklab, var(--ring) 32%, transparent); }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offset: 0; }
+  a { text-underline-offset: 0.2em; }
+
+  /* Page frozen under a modal layer (class set by layers.ts; no inline style under the CSP). */
+  html.scroll-locked { overflow: hidden; }
+
+  /* Native controls readable in dark mode: background, text and dropdown follow the tokens. */
+  select, input[type="datetime-local"] { color-scheme: light dark; background-color: var(--surface); color: var(--ink); }
+  select option, select optgroup { background-color: var(--surface); color: var(--ink); }
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator { opacity: 0.7; cursor: pointer; }
+
+  kbd {
+    display: inline-grid;
+    place-items: center;
+    min-width: 1.5rem;
+    height: 1.5rem;
+    padding: 0 0.375rem;
+    border: 1px solid var(--line-strong);
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    background: var(--surface-2);
+    color: var(--ink);
+    font: 500 12px/1 ui-sans-serif, system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Button feedback: instant colours, press at 0.96. */
+  button {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition-property: scale, background-color, color, opacity, border-color;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
+  }
+  button:disabled { cursor: default; }
+  @media (prefers-reduced-motion: no-preference) {
+    button:not(:disabled):not([data-static]):active { scale: 0.96; }
+  }
+}
+
+@layer components {
+  /* Elevation: an offset blurred shadow, no ghost border (transparent border for forced colours). */
+  .surface-raised {
+    border: 1px solid transparent;
+    box-shadow: 0 0 0 1px var(--line), 0 18px 40px -12px oklch(0.2 0.02 70 / 0.22), 0 4px 10px -4px oklch(0.2 0.02 70 / 0.1);
+  }
+  @media (prefers-color-scheme: dark) {
+    .surface-raised { box-shadow: 0 0 0 1px var(--line-strong), 0 20px 44px -12px oklch(0 0 0 / 0.65), 0 4px 10px -4px oklch(0 0 0 / 0.4); }
+  }
+
+  /* Edge fade of a scrolling row (attributes set by useScrollFade): never a hard cut. */
+  .scroll-fade {
+    --fade-start: 0px;
+    --fade-end: 0px;
+    mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent 100%);
+  }
+  .scroll-fade[data-fade-start] { --fade-start: 28px; }
+  .scroll-fade[data-fade-end] { --fade-end: 40px; }
+
+  /* Tool group: one pill, concentric round buttons (full radius on both sides). */
+  .tool-group {
+    border: 1px solid transparent;
+    background: var(--surface);
+    box-shadow: 0 0 0 1px var(--line), 0 1px 2px oklch(0 0 0 / 0.06);
+  }
+
+  .no-scrollbar { scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+
+  /* Tint per kind, read by .tile, .band and .glyph. */
+  .kind-markdown { --tile: var(--markdown-tile); --band: var(--markdown-band); --glyph: var(--markdown-glyph); }
+  .kind-html { --tile: var(--html-tile); --band: var(--html-band); --glyph: var(--html-glyph); }
+  .kind-site { --tile: var(--site-tile); --band: var(--site-band); --glyph: var(--site-glyph); }
+  .kind-pdf { --tile: var(--pdf-tile); --band: var(--pdf-band); --glyph: var(--pdf-glyph); }
+  .kind-json { --tile: var(--json-tile); --band: var(--json-band); --glyph: var(--json-glyph); }
+
+  .tile {
+    background-color: var(--tile);
+    background-image: var(--texture);
+    background-size: 150% auto;
+    color: var(--glyph);
+  }
+  .kind-html.tile { background-position: 70% 40%; }
+  .kind-site.tile { background-position: 20% 90%; }
+  .kind-pdf.tile { background-position: 90% 10%; }
+  .kind-json.tile { background-position: 40% 60%; }
+  .band { background-color: var(--band); }
+
+  /* Folder card: mosaic of the latest artifacts, blue pictogram; drop target for a dragged card. */
+  .folder-mosaic { background-color: var(--folder-mosaic); }
+  .folder-glyph { color: var(--folder); }
+  .drop-over { outline: 2px dashed var(--ring); outline-offset: -2px; background-color: color-mix(in oklab, var(--ring) 8%, var(--surface)); }
+  .glyph { color: var(--glyph); }
+
+  /* Preview sheets: one sheet in front, a second one peeking out behind. */
+  .sheet {
+    background: var(--paper);
+    border: 1px solid var(--paper-line);
+    border-bottom: 0;
+    border-radius: 10px 10px 0 0;
+    color: var(--paper-ink);
+  }
+  .sheet-back {
+    background: var(--paper-back);
+    border: 1px solid var(--paper-line);
+    border-radius: 10px 10px 0 0;
+    rotate: 1.6deg;
+    transform-origin: 0 100%;
+  }
+  .sheet-front { box-shadow: 0 -2px 14px -6px oklch(0 0 0 / 0.35); }
+  /* Sheet holding a capture: the image goes to the edge, its inner outline replaces the border. */
+  .sheet-photo { border: 0; }
+
+  /* Inner outline of thumbnails: separates the image from the background whatever its colour. */
+  .thumb-img { outline: 1px solid oklch(0 0 0 / 0.1); outline-offset: -1px; background: var(--paper); }
+  @media (prefers-color-scheme: dark) {
+    .thumb-img { outline-color: oklch(1 0 0 / 0.1); }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .sheet-front, .sheet-back { transition: translate 420ms cubic-bezier(0.16, 1, 0.3, 1), rotate 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+    .card:hover .sheet-front, .card:focus-visible .sheet-front { translate: 0 -5px; }
+    .card:hover .sheet-back, .card:focus-visible .sheet-back { rotate: 2.6deg; translate: 0 -3px; }
+  }
+
+  /* Tooltip of icon buttons (the accessible name stays aria-label). */
+  .tip { position: relative; }
+  .tip::after {
+    content: attr(data-tip);
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    translate: -50% -2px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: var(--ink);
+    color: var(--canvas);
+    font-size: 12px;
+    line-height: 16px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 120ms ease-out, translate 120ms ease-out;
+    z-index: 40;
+  }
+  .tip-end::after { left: auto; right: 0; translate: 0 -2px; }
+  .tip:hover::after, .tip:focus-visible::after { opacity: 1; translate: -50% 0; transition-delay: 300ms; }
+  .tip-end:hover::after, .tip-end:focus-visible::after { translate: 0 0; }
+  .tip[aria-expanded="true"]::after { opacity: 0; }
+  @media (hover: none) { .tip::after { display: none; } }
+
+  /* One-off entrances (dialog, notification, menu): once, never on a toggled state. */
+  .enter-fade { animation: enter-fade 150ms ease-out both; }
+  .enter-rise { animation: enter-fade 300ms ease-out both; }
+  .enter-pop { animation: enter-fade 140ms ease-out both; }
+  @media (prefers-reduced-motion: no-preference) {
+    .enter-rise { animation-name: enter-rise; animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1); }
+    .enter-pop { animation-name: enter-pop; animation-duration: 180ms; animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1); }
+  }
+}
+
+/* Side panel: enters from the right (from the bottom full screen on mobile), leaves faster than it enters.
+   Reduced motion: opacity only. */
+.drawer-scrim { animation: enter-fade 220ms ease-out both; }
+.drawer-scrim[data-closing] { animation: exit-fade 180ms ease-in both; }
+.drawer-panel { animation: enter-fade 200ms ease-out both; }
+.drawer-panel[data-closing] { animation: exit-fade 160ms ease-in both; }
+@media (prefers-reduced-motion: no-preference) {
+  .drawer-panel { animation: drawer-in-up 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .drawer-panel[data-closing] { animation: drawer-out-down 200ms cubic-bezier(0.4, 0, 1, 1) both; }
+  @media (min-width: 40rem) {
+    .drawer-panel { animation-name: drawer-in-side; }
+    .drawer-panel[data-closing] { animation-name: drawer-out-side; }
+  }
+}
+
+@keyframes exit-fade {
+  to { opacity: 0; }
+}
+@keyframes drawer-in-side {
+  from { opacity: 0; translate: 56px 0; }
+}
+@keyframes drawer-out-side {
+  to { opacity: 0; translate: 40px 0; }
+}
+@keyframes drawer-in-up {
+  from { opacity: 0; translate: 0 40px; }
+}
+@keyframes drawer-out-down {
+  to { opacity: 0; translate: 0 32px; }
+}
+@keyframes enter-fade {
+  from { opacity: 0; }
+}
+@keyframes enter-rise {
+  from { opacity: 0; filter: blur(4px); translate: 0 12px; }
+}
+@keyframes enter-pop {
+  from { opacity: 0; scale: 0.97; translate: 0 -4px; }
+}

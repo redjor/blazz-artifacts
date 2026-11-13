@@ -1,0 +1,813 @@
+import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
+import { api, copyDeferred, copyText, openPreview } from './api.ts';
+import { ActionsMenu, ArtifactCard, CARD_DRAG_TYPE, MetaLine } from './ArtifactCard.tsx';
+import { ArtifactDrawer, type LinkActions } from './ArtifactPanel.tsx';
+import { FolderCard, FolderRow, folderKey, folderOfKey, type FolderActions, type NamedFolder } from './FolderCard.tsx';
+import { confirmExposure, FolderDrawer } from './FolderPanel.tsx';
+import { ACCEPT_ALL, compareText, KIND_FILTERS, kindLabel, kindTileLabel, VISIBILITY_ORDER, visibilityLabel, visibilityShort } from './format.ts';
+import { t, tn, type Locale, type MessageKey } from './i18n/index.ts';
+import { LanguageSwitch } from './LanguageSwitch.tsx';
+import { readHash, writeHash } from './hash.ts';
+import { CheckIcon, ChevronRightIcon, CloseIcon, FilterIcon, FolderIcon, FolderPlusIcon, GridIcon, KIND_ICON, KeyboardIcon, ListIcon, LogoutIcon, PinIcon, SearchIcon, SortIcon, UploadIcon, VISIBILITY_ICON } from './icons.tsx';
+import { hasOpenLayer, isEditable } from './layers.ts';
+import { Popover, type PopoverHandle } from './Popover.tsx';
+import { NewFolderDialog } from './NewFolderDialog.tsx';
+import { PublishDialog } from './PublishDialog.tsx';
+import type { ArtifactDto, FolderSummary, Kind, LabelCount, Visibility } from './types.ts';
+
+// Folder (project) filter in the hash (#project=x); “~none” = no folder (“~” is not a valid label character).
+const NONE = '~none';
+
+const remember = <T extends string>(key: string, allowed: readonly T[], fallback: T) => ({
+  read: (): T => {
+    try {
+      const v = localStorage.getItem(key);
+      return allowed.includes(v as T) ? (v as T) : fallback;
+    } catch {
+      return fallback;
+    }
+  },
+  write: (v: T) => {
+    try {
+      localStorage.setItem(key, v);
+    } catch {
+      // storage unavailable (private browsing): the choice lasts for the session
+    }
+  },
+});
+
+type View = 'grid' | 'list';
+const viewPref = remember<View>('blazz-artifacts:view', ['grid', 'list'], 'grid');
+
+type Sort = 'recent' | 'oldest' | 'title' | 'kind';
+const SORTS: Sort[] = ['recent', 'oldest', 'title', 'kind'];
+const sortPref = remember<Sort>('blazz-artifacts:sort', SORTS, 'recent');
+const KIND_RANK = Object.fromEntries(KIND_FILTERS.map((k, i) => [k.kind, i])) as Record<Kind, number>;
+const byRecent = (x: ArtifactDto, y: ArtifactDto) => y.updatedAt.localeCompare(x.updatedAt);
+const COMPARE: Record<Sort, (x: ArtifactDto, y: ArtifactDto) => number> = {
+  recent: byRecent,
+  oldest: (x, y) => x.updatedAt.localeCompare(y.updatedAt),
+  title: (x, y) => compareText(x.title, y.title),
+  kind: (x, y) => KIND_RANK[x.kind] - KIND_RANK[y.kind] || byRecent(x, y),
+};
+// Pinned first (most recently pinned on top), then the chosen sort.
+const byPinned = (x: ArtifactDto, y: ArtifactDto) =>
+  x.pinnedAt && y.pinnedAt ? y.pinnedAt.localeCompare(x.pinnedAt) : x.pinnedAt ? -1 : y.pinnedAt ? 1 : 0;
+// Folders: same sort, on their latest activity (sheet or most recent artifact) and their title (else their name).
+const activity = (f: NamedFolder) => f.latestUpdatedAt ?? '';
+const folderTitle = (f: NamedFolder) => f.title ?? f.name;
+const folderByRecent = (x: NamedFolder, y: NamedFolder) => activity(y).localeCompare(activity(x)) || x.name.localeCompare(y.name);
+const FOLDER_COMPARE: Record<Sort, (x: NamedFolder, y: NamedFolder) => number> = {
+  recent: folderByRecent,
+  oldest: (x, y) => activity(x).localeCompare(activity(y)) || x.name.localeCompare(y.name),
+  title: (x, y) => compareText(folderTitle(x), folderTitle(y)),
+  kind: folderByRecent,
+};
+
+const iconButton = 'tip tip-end relative grid size-10 place-items-center rounded-full text-ink hover:bg-surface-2 aria-expanded:bg-surface-2 aria-pressed:bg-surface-2';
+// Round button in the tool group: 36 px inside a pill with 4 px padding, full radius on both sides.
+const toolButton = 'tip tip-end relative grid size-9 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-ink aria-expanded:bg-surface-2 aria-expanded:text-ink aria-pressed:bg-surface-2 aria-pressed:text-ink';
+// Toolbar menus: on mobile, anchored to the full toolbar width (never off screen).
+const TOOL_WRAP = 'relative max-sm:static';
+const TOOL_PANEL = 'max-sm:inset-x-0';
+const chip = (on: boolean) =>
+  `inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] ${on ? 'bg-ink text-canvas' : 'bg-surface-2 text-ink hover:bg-surface-3'}`;
+
+const SHORTCUTS: { keys: (string | MessageKey)[]; label: MessageKey }[] = [
+  { keys: ['/'], label: 'shortcut.search' },
+  { keys: ['N'], label: 'shortcut.publish' },
+  { keys: ['←', '↑', '→', '↓'], label: 'shortcut.move' },
+  { keys: ['key.enter'], label: 'shortcut.open' },
+  { keys: ['E'], label: 'shortcut.manage' },
+  { keys: ['↑', '↓'], label: 'shortcut.panel' },
+  { keys: ['key.esc'], label: 'shortcut.close' },
+  { keys: ['?'], label: 'shortcut.help' },
+];
+const keyLabel = (k: string) => (k.startsWith('key.') ? t(k as MessageKey) : k);
+
+/** Actual grid columns: cards aligned on the first row. */
+function columnCount(list: HTMLElement | null): number {
+  const items = list ? [...list.children] as HTMLElement[] : [];
+  if (items.length === 0) return 1;
+  const top = items[0].offsetTop;
+  const n = items.findIndex((el) => el.offsetTop !== top);
+  return n === -1 ? items.length : n;
+}
+
+/** `locale` is only read to re-render on a language change. */
+export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }) {
+  const [items, setItems] = useState<ArtifactDto[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [pending, setPending] = useState<File | null>(null);
+  const [projects, setProjects] = useState<FolderSummary[]>([]);
+  const [folderOpen, setFolderOpen] = useState<string | null>(null);
+  // “New folder” dialog; `moveId`: artifact to move into it once created (from a card's menu).
+  const [newFolder, setNewFolder] = useState<{ moveId: string | null } | null>(null);
+  const [tagCounts, setTagCounts] = useState<LabelCount[]>([]);
+  const [project, setProjectState] = useState<string | null>(() => readHash('project'));
+  const [activeTags, setActiveTags] = useState<string[]>([]);
+  const [visibility, setVisibility] = useState<Visibility | null>(null);
+  const [kind, setKind] = useState<Kind | null>(null);
+  const [view, setViewState] = useState<View>(viewPref.read);
+  const [sort, setSortState] = useState<Sort>(sortPref.read);
+  const [selected, setSelectedState] = useState<string | null>(() => readHash('a'));
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const searchButton = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  const shortcuts = useRef<PopoverHandle>(null);
+  const gallery = useRef<HTMLElement>(null);
+  const drawerDirty = useRef(false);
+  // Read by the hash listener (installed once): latest known state.
+  const latest = useRef({ items, loaded, selected });
+  useEffect(() => {
+    latest.current = { items, loaded, selected };
+  });
+
+  const setProject = (p: string | null) => {
+    setProjectState(p);
+    writeHash({ project: p });
+  };
+  const setSelected = (id: string | null) => {
+    setSelectedState(id);
+    writeHash({ a: id });
+  };
+  useEffect(() => {
+    const onHash = () => {
+      setProjectState(readHash('project'));
+      const { items: known, loaded: ready, selected: current } = latest.current;
+      let next = readHash('a');
+      if (next === current) return;
+      // Unknown identifier: hash cleaned, panel closed (list not loaded yet: reload decides).
+      if (next && ready && !known.some((a) => a.id === next)) next = null;
+      if (current && drawerDirty.current && !window.confirm(t('common.discardConfirm'))) {
+        writeHash({ a: current });
+        return;
+      }
+      if (next !== readHash('a')) writeHash({ a: next });
+      setSelectedState(next);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  const setView = (v: View) => {
+    setViewState(v);
+    viewPref.write(v);
+  };
+  const setSort = (s: Sort) => {
+    setSortState(s);
+    sortPref.write(s);
+  };
+
+  const reload = useCallback(
+    () =>
+      Promise.all([api.list(), api.projects(), api.tags()])
+        .then(([list, ps, ts]) => {
+          setItems(list);
+          setProjects(ps);
+          setTagCounts(ts);
+          setActiveTags((cur) => {
+            const kept = cur.filter((t) => ts.some((x) => x.name === t));
+            return kept.length === cur.length ? cur : kept;
+          });
+          setProjectState((cur) => {
+            if (cur === null || cur === NONE || ps.some((x) => x.name === cur)) return cur;
+            writeHash({ project: null });
+            return null;
+          });
+          // Artifact from the hash deleted meanwhile: close quietly.
+          setSelectedState((cur) => {
+            if (cur === null || list.some((a) => a.id === cur)) return cur;
+            writeHash({ a: null });
+            return null;
+          });
+        })
+        .catch((e) => setNotice((e as Error).message))
+        .finally(() => setLoaded(true)),
+    [],
+  );
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), Math.max(2500, notice.length * 60));
+    return () => clearTimeout(t);
+  }, [notice]);
+  useEffect(() => {
+    if (searchOpen) searchInput.current?.focus();
+  }, [searchOpen]);
+
+  const q = query.trim().toLowerCase();
+  const filtersActive = kind !== null || visibility !== null || activeTags.length > 0;
+  // Root (“All”): folders as cards then artifacts without a folder; a search or a filter flattens (all artifacts).
+  const atRoot = project === null;
+  const flat = atRoot && (q !== '' || filtersActive);
+  const visible = items
+    .filter(
+      (a) =>
+        (project === null ? flat || a.project === null : project === NONE ? a.project === null : a.project === project) &&
+        activeTags.every((t) => a.tags.includes(t)) &&
+        (visibility === null || a.visibility === visibility) &&
+        (kind === null || a.kind === kind) &&
+        (!q || a.title.toLowerCase().includes(q) || a.slug.includes(q) || a.tags.some((t) => t.includes(q))),
+    )
+    .sort((x, y) => byPinned(x, y) || COMPARE[sort](x, y));
+  const namedFolders = projects.filter((p): p is NamedFolder => p.name !== null);
+  const folderCards = atRoot && !filtersActive
+    ? namedFolders.filter((f) => !q || f.name.includes(q) || !!f.title?.toLowerCase().includes(q)).sort(FOLDER_COMPARE[sort])
+    : [];
+  const artifactOrder = visible.map((a) => a.id);
+  const order = [...folderCards.map((f) => folderKey(f.name)), ...artifactOrder];
+  // Roving tabindex: a single card reachable with Tab, arrows do the rest.
+  const tabbableId = focusId && order.includes(focusId) ? focusId : order[0];
+
+  const projectNames = projects.flatMap((p) => (p.name === null ? [] : [p.name]));
+  const currentFolder = project && project !== NONE ? projects.find((p) => p.name === project) ?? null : null;
+  const FolderVisIcon = currentFolder && currentFolder.visibility !== 'private' ? VISIBILITY_ICON[currentFolder.visibility] : null;
+  const toggleTag = (t: string) => setActiveTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
+  const filterCount = activeTags.length + (visibility ? 1 : 0);
+  const clearFilters = () => {
+    setActiveTags([]);
+    setVisibility(null);
+    setKind(null);
+  };
+  // Count per kind in the current folder, before the kind filter: tiles stay comparable.
+  const inScope = items.filter((a) => project === null || (project === NONE ? a.project === null : a.project === project));
+  const kindCount = (k: Kind) => inScope.filter((a) => a.kind === k).length;
+
+  const pick = (accept: string) => {
+    const el = fileInput.current;
+    if (!el) return;
+    el.accept = accept;
+    el.click();
+  };
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setQuery('');
+    searchButton.current?.focus();
+  };
+
+  // Gallery shortcuts: never while typing, with Ctrl/Cmd/Alt, or when a layer is open.
+  const keys = useRef<(e: KeyboardEvent) => void>(() => {});
+  useEffect(() => {
+    keys.current = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || isEditable(e.target) || hasOpenLayer()) return;
+      if (e.key === '/') {
+        e.preventDefault();
+        if (searchOpen) searchInput.current?.focus();
+        else setSearchOpen(true);
+      } else if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        pick(ACCEPT_ALL);
+      } else if (e.key === '?') {
+        e.preventDefault();
+        shortcuts.current?.open();
+      }
+    };
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keys.current(e);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const focusCard = (id: string) => {
+    setFocusId(id);
+    list.current?.querySelector<HTMLElement>(`[data-card="${CSS.escape(id)}"]`)?.focus();
+  };
+  const onListKey = (e: ReactKeyboardEvent<HTMLUListElement>) => {
+    const target = e.target as HTMLElement;
+    const id = target.dataset.card;
+    if (!id || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'e' || e.key === 'E') {
+      e.preventDefault();
+      const folder = folderOfKey(id);
+      if (folder) setFolderOpen(folder);
+      else setSelected(id);
+      return;
+    }
+    const i = order.indexOf(id);
+    const cols = view === 'grid' ? columnCount(list.current) : 1;
+    const to = { ArrowRight: i + 1, ArrowLeft: i - 1, ArrowDown: i + cols, ArrowUp: i - cols, Home: 0, End: order.length - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    if (to >= 0 && to < order.length) focusCard(order[to]);
+  };
+
+  const onDrop = (e: DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) setPending(file);
+  };
+
+  const run = (fn: () => Promise<unknown>, ok?: string) => fn().then(() => ok && setNotice(ok)).catch((e) => setNotice((e as Error).message));
+
+  /** Share for 7 days: switch to “link” if needed (confirmation if visitors lose access), create the link, copy it. */
+  const share = async (a: ArtifactDto): Promise<boolean> => {
+    if ((a.visibility === 'public' || a.visibility === 'code') && !window.confirm(t('confirm.toLink'))) return false;
+    const req = api.share(a.id, { hours: 168 });
+    const copied = copyDeferred(req.then((r) => {
+      if (!r.link.url) throw new Error(t('common.unreadableLink'));
+      return r.link.url;
+    })).then(() => true, () => false);
+    try {
+      await req;
+    } catch (e) {
+      setNotice((e as Error).message);
+      return false;
+    }
+    setNotice((await copied) ? t('notice.link7Copied') : t('notice.link7NoCopy'));
+    void reload();
+    return true;
+  };
+
+  /** Copy link: the address that actually works for a visitor, given the visibility. */
+  const copyLink = async (a: ArtifactDto): Promise<void> => {
+    const copy = (url: string, ok: string) => copyText(url).then(() => setNotice(ok), () => setNotice(t('common.copyFailed')));
+    if (a.visibility === 'private') return setNotice(t('card.privateHint'));
+    if (a.visibility === 'public') return copy(a.url, t('common.linkCopied'));
+    if (a.visibility === 'code') return copy(a.url, t('notice.linkCopiedCode'));
+    if (a.activeLinkUrl) return copy(a.activeLinkUrl, t('notice.shareLinkCopied'));
+    if (window.confirm(t('confirm.noActiveLink'))) await share(a);
+  };
+
+  const togglePin = async (a: ArtifactDto): Promise<void> => {
+    try {
+      await api.update(a.id, { pinned: !a.pinned });
+      setNotice(a.pinned ? t('notice.unpinned') : t('notice.pinned'));
+      await reload();
+    } catch (e) {
+      setNotice((e as Error).message);
+    }
+  };
+
+  /**
+   * Moves an artifact (PATCH project). Into a shared folder, a non-public artifact becomes visible there:
+   * explicit confirmation, as when sharing a folder that holds private artifacts.
+   */
+  const move = async (a: ArtifactDto, to: string | null): Promise<void> => {
+    if (a.project === to) return;
+    const dest = to === null ? undefined : projects.find((p) => p.name === to);
+    if (dest && dest.visibility !== 'private' && a.visibility !== 'public' &&
+      !window.confirm(t('confirm.moveToShared', { folder: to ?? '', folderVisibility: visibilityLabel(dest.visibility).toLowerCase(), title: a.title, visibility: visibilityLabel(a.visibility).toLowerCase() }))) return;
+    lastIndex.current = Math.max(0, order.indexOf(a.id));
+    try {
+      await api.update(a.id, { project: to });
+      setNotice(to ? t('notice.moved', { title: a.title, folder: to }) : t('notice.movedOut', { title: a.title }));
+      await reload();
+      // The card may leave the current view: focus goes to its neighbour.
+      requestAnimationFrame(() => cardFocusTarget(a.id)?.focus());
+    } catch (e) {
+      setNotice((e as Error).message);
+    }
+  };
+
+  const onFolderCreated = async (f: { name: string }) => {
+    const moveId = newFolder?.moveId ?? null;
+    setNewFolder(null);
+    const art = moveId ? items.find((a) => a.id === moveId) : undefined;
+    if (art) {
+      try {
+        await api.update(art.id, { project: f.name });
+        setNotice(t('notice.folderCreatedWith', { name: f.name, title: art.title }));
+      } catch (e) {
+        setNotice(t('notice.folderCreatedError', { name: f.name, error: (e as Error).message }));
+      }
+    } else setNotice(t('notice.folderCreated', { name: f.name }));
+    await reload();
+    setProject(f.name);
+    if (!art) setFolderOpen(f.name);
+  };
+
+  /** Enters a folder from its card: the search (which may have found it) closes, focus goes to the gallery. */
+  const enterFolder = (name: string) => {
+    setQuery('');
+    setSearchOpen(false);
+    setProject(name);
+    setFocusId(null);
+    requestAnimationFrame(() => (list.current?.querySelector<HTMLElement>('[data-card][tabindex="0"]') ?? gallery.current)?.focus());
+  };
+  /** Back to the root (breadcrumb): focus returns to the card of the folder just left. */
+  const leaveFolder = () => {
+    const from = project && project !== NONE ? project : null;
+    setProject(null);
+    if (!from) return;
+    setFocusId(folderKey(from));
+    requestAnimationFrame(() => cardFocusTarget(folderKey(from))?.focus());
+  };
+
+  const shareFolder = async (f: NamedFolder): Promise<void> => {
+    if (!confirmExposure(f, 'link')) return;
+    if ((f.visibility === 'public' || f.visibility === 'code') && !window.confirm(t('confirm.folderToLink'))) return;
+    const req = api.shareFolder(f.name, { hours: 168 });
+    const copied = copyDeferred(req.then((r) => {
+      if (!r.link.url) throw new Error(t('common.unreadableLink'));
+      return r.link.url;
+    })).then(() => true, () => false);
+    try {
+      await req;
+    } catch (e) {
+      setNotice((e as Error).message);
+      return;
+    }
+    setNotice((await copied) ? t('notice.folderLinkCopied7') : t('notice.link7NoCopyManage'));
+    void reload();
+  };
+
+  /** Copy a folder's link: same rules as for an artifact (public address, address + code, active link). */
+  const copyFolderLink = async (f: NamedFolder): Promise<void> => {
+    const copy = (url: string, ok: string) => copyText(url).then(() => setNotice(ok), () => setNotice(t('common.copyFailed')));
+    if (f.visibility === 'private' || !f.url) return setNotice(t('folder.privateHint'));
+    if (f.visibility === 'public') return copy(f.url, t('notice.folderAddressCopied'));
+    if (f.visibility === 'code') return copy(f.url, t('notice.addressCopiedCode'));
+    if (f.activeLinkUrl) return copy(f.activeLinkUrl, t('notice.folderLinkCopied'));
+    if (window.confirm(t('confirm.noActiveFolderLink'))) await shareFolder(f);
+  };
+
+  /** Deletes an empty folder (the menu disables it otherwise; the server only deletes the sheet). */
+  const deleteFolder = async (f: NamedFolder): Promise<void> => {
+    if (f.count > 0) return setNotice(t('folder.emptyFirst'));
+    if (!window.confirm(t('confirm.deleteEmptyFolder', { title: f.title ?? f.name, name: f.name }))) return;
+    const card = folderKey(f.name);
+    lastIndex.current = Math.max(0, order.indexOf(card));
+    try {
+      await api.deleteFolder(f.name);
+      setNotice(t('notice.folderDeleted'));
+      await reload();
+      requestAnimationFrame(() => cardFocusTarget(card)?.focus());
+    } catch (e) {
+      setNotice((e as Error).message);
+    }
+  };
+
+  const moveById = (id: string, to: string | null) => {
+    const a = items.find((x) => x.id === id);
+    if (a) void move(a, to);
+  };
+
+  const folderActionsFor = (f: NamedFolder): FolderActions => ({
+    onOpen: () => enterFolder(f.name),
+    onManage: () => setFolderOpen(f.name),
+    onCopy: () => void copyFolderLink(f),
+    onShare: () => void shareFolder(f),
+    onDelete: () => void deleteFolder(f),
+    onDropCard: (id) => moveById(id, f.name),
+  });
+
+  const links: LinkActions = { copy: copyLink, share, togglePin };
+  const actionsFor = (a: ArtifactDto) => ({
+    folders: projectNames,
+    onMove: (to: string | null) => void move(a, to),
+    onNewFolder: () => setNewFolder({ moveId: a.id }),
+    onManage: () => setSelected(a.id),
+    onPreview: () => void run(() => openPreview(a.id)),
+    onCopy: () => void copyLink(a),
+    onShare: () => void share(a),
+    onTogglePin: () => void togglePin(a),
+  });
+
+  const closeDrawer = useCallback(() => {
+    setSelectedState(null);
+    writeHash({ a: null });
+  }, []);
+  const selectedSummary = selected ? items.find((a) => a.id === selected) : undefined;
+  // Position of the open artifact: if its card disappears (deletion), focus goes to its neighbour.
+  const lastIndex = useRef(0);
+  useEffect(() => {
+    if (selected && order.includes(selected)) lastIndex.current = order.indexOf(selected);
+  });
+  const cardFocusTarget = (id: string): HTMLElement | null => {
+    const card = (cid: string | undefined) => (cid ? list.current?.querySelector<HTMLElement>(`[data-card="${CSS.escape(cid)}"]`) ?? null : null);
+    const own = card(id);
+    if (own) {
+      setFocusId(id);
+      return own;
+    }
+    // The order may predate the reload: take the first card still present, following ones first.
+    const i = lastIndex.current;
+    for (const cid of [...order.slice(i), ...order.slice(0, i).reverse()]) {
+      const other = card(cid);
+      if (other) {
+        setFocusId(cid);
+        return other;
+      }
+    }
+    return gallery.current;
+  };
+
+  return (
+    <div className="min-h-dvh" onDragOver={(e) => { if (!e.dataTransfer.types.includes('Files')) return; e.preventDefault(); setDragging(true); }}
+      onDragLeave={(e) => { if (!e.relatedTarget) setDragging(false); }} onDrop={onDrop}>
+      <div className="mx-auto max-w-[1440px] px-5 pt-7 pb-24 sm:px-10 sm:pt-11 lg:px-16 xl:px-24">
+        <header className="flex items-center justify-between gap-4">
+          <h1 className="font-serif text-[2.375rem] leading-tight font-normal tracking-[-0.015em] sm:text-[2.875rem]">{t('app.heading')}</h1>
+          <div className="flex items-center gap-1">
+            <LanguageSwitch />
+            <button type="button" onClick={onLogout} aria-label={t('gallery.logout')} data-tip={t('gallery.logout')} className={`${iconButton} text-muted hover:text-ink`}>
+              <LogoutIcon />
+            </button>
+          </div>
+        </header>
+
+        {/* Folder creation on the left, tools on the right; the search slots in before the tools (or below on mobile). */}
+        <div className="relative mt-6 flex flex-wrap items-center gap-x-3 gap-y-3 sm:mt-8">
+          {/* Folders are gallery cards; only creation lives here. */}
+          <div className="order-1 flex min-w-0 grow basis-full items-center gap-1 sm:basis-0">
+            <button type="button" onClick={() => setNewFolder({ moveId: null })} aria-label={t('common.newFolder')}
+              data-tip={t('common.newFolder')} className="tip inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-3 text-[15px] whitespace-nowrap text-muted hover:bg-surface-2 hover:text-ink max-sm:w-10 max-sm:justify-center max-sm:px-0 sm:pr-3.5 sm:pl-2.5">
+              <FolderPlusIcon className="size-[18px]" /><span className="max-sm:sr-only">{t('common.newFolder')}</span>
+            </button>
+          </div>
+
+          {searchOpen && (
+            <label className="order-3 flex h-10 w-full items-center gap-2 rounded-full border border-line bg-surface px-3.5 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-ring sm:order-2 sm:w-72">
+              <SearchIcon className="size-4 text-muted" />
+              <span className="sr-only">{t('shortcut.search')}</span>
+              <input ref={searchInput} type="search" placeholder={t('gallery.searchPlaceholder')} value={query} onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); closeSearch(); } }}
+                className="min-w-0 flex-1 bg-transparent text-sm outline-none focus-visible:outline-none [&::-webkit-search-cancel-button]:hidden" />
+            </label>
+          )}
+
+          <div className="order-2 ml-auto flex shrink-0 items-center gap-2 sm:order-3">
+            {currentFolder && (
+              <>
+                <button type="button" onClick={() => setFolderOpen(currentFolder.name)}
+                  aria-label={t('gallery.folderButtonLabel', { name: currentFolder.name ?? '', visibility: visibilityLabel(currentFolder.visibility).toLowerCase() })}
+                  className="relative inline-flex h-9 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-3 text-sm text-ink hover:bg-surface-2">
+                  <FolderIcon className="size-4" />
+                  <span>{t('gallery.folderButton')}</span>
+                  {FolderVisIcon && <FolderVisIcon className="size-3.5 text-muted" />}
+                </button>
+                <span aria-hidden="true" className="mx-1 h-5 w-px bg-line max-sm:hidden" />
+              </>
+            )}
+            <div role="toolbar" aria-label={t('gallery.toolbar')} className="tool-group flex items-center gap-0.5 rounded-full p-0.5">
+            <button ref={searchButton} type="button" aria-label={searchOpen ? t('gallery.closeSearch') : t('shortcut.search')} data-tip={searchOpen ? t('gallery.closeSearch') : t('gallery.searchTip')}
+              aria-keyshortcuts="/" aria-pressed={searchOpen} onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))} className={toolButton}>
+              {searchOpen ? <CloseIcon /> : <SearchIcon />}
+            </button>
+            <Popover label={filterCount ? tn('gallery.filterActive', filterCount) : t('gallery.filter')} tip={t('gallery.filter')}
+              trigger={<><FilterIcon />{filterCount > 0 && <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-ring ring-2 ring-surface" />}</>}
+              triggerClass={toolButton} wrapClass={TOOL_WRAP} panelClass={`${TOOL_PANEL} sm:w-[22rem] p-4`}>
+              {() => (
+                <div className="space-y-4">
+                  <div role="group" aria-label={t('common.visibility')}>
+                    <p className="text-xs font-medium text-muted">{t('common.visibility')}</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <button type="button" aria-pressed={visibility === null} onClick={() => setVisibility(null)} className={chip(visibility === null)}>{t('gallery.all')}</button>
+                      {VISIBILITY_ORDER.map((v) => (
+                        <button key={v} type="button" aria-pressed={visibility === v} onClick={() => setVisibility(visibility === v ? null : v)} className={chip(visibility === v)}>
+                          {visibilityShort(v)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div role="group" aria-label={t('gallery.tags')}>
+                    <p className="text-xs font-medium text-muted">{t('gallery.tags')} <span className="font-normal">{t('gallery.tagsAllRequired')}</span></p>
+                    {tagCounts.length === 0 ? (
+                      <p className="mt-2 text-sm text-muted">{t('gallery.noTags')}</p>
+                    ) : (
+                      <div className="mt-2 flex max-h-52 flex-wrap gap-1.5 overflow-y-auto">
+                        {tagCounts.map((tag) => (
+                          <button key={tag.name} type="button" aria-pressed={activeTags.includes(tag.name)} onClick={() => toggleTag(tag.name)} className={chip(activeTags.includes(tag.name))}>
+                            {tag.name} <span className="tabular-nums opacity-70">{tag.count}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {filterCount > 0 && (
+                    <button type="button" onClick={clearFilters} className="text-sm text-muted underline decoration-line-strong hover:text-ink">{t('gallery.clearFilters')}</button>
+                  )}
+                </div>
+              )}
+            </Popover>
+            <Popover label={t('gallery.sortLabel', { label: t(`sort.${sort}`) })} tip={t('gallery.sort')}
+              trigger={<><SortIcon />{sort !== 'recent' && <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-ring ring-2 ring-surface" />}</>}
+              triggerClass={toolButton} wrapClass={TOOL_WRAP} panelClass={`${TOOL_PANEL} sm:w-56 p-1.5`}>
+              {() => (
+                <div role="radiogroup" aria-label={t('gallery.sortGroup')}>
+                  {SORTS.map((s) => (
+                    <label key={s} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm hover:bg-surface-2 has-[:focus-visible]:outline-2 has-[:focus-visible]:-outline-offset-2 has-[:focus-visible]:outline-ring">
+                      <input type="radio" name="gallery-sort" value={s} checked={sort === s} onChange={() => setSort(s)} className="sr-only" data-autofocus={sort === s || undefined} />
+                      <CheckIcon className={`size-4 ${sort === s ? 'text-ink' : 'invisible'}`} />
+                      <span className={sort === s ? 'font-medium' : ''}>{t(`sort.${s}`)}</span>
+                    </label>
+                  ))}
+                  <p className="mx-2.5 mt-1 border-t border-line pt-2 pb-1 text-xs text-muted">{t('gallery.pinnedFirst')}</p>
+                </div>
+              )}
+            </Popover>
+            <button type="button" aria-label={view === 'grid' ? t('gallery.showList') : t('gallery.showGrid')} data-tip={view === 'grid' ? t('gallery.showList') : t('gallery.showGrid')}
+              onClick={() => setView(view === 'grid' ? 'list' : 'grid')} className={toolButton}>
+              {view === 'grid' ? <ListIcon /> : <GridIcon />}
+            </button>
+            <Popover ref={shortcuts} label={t('gallery.shortcuts')} tip={t('gallery.shortcutsTip')} trigger={<KeyboardIcon />} triggerClass={toolButton} wrapClass={TOOL_WRAP} panelClass={`${TOOL_PANEL} sm:w-[22rem] p-4`}>
+              {() => (
+                <div tabIndex={-1} data-autofocus className="outline-none">
+                  <p className="text-sm font-medium">{t('gallery.shortcuts')}</p>
+                  <dl className="mt-3 space-y-2 text-sm">
+                    {SHORTCUTS.map((s) => (
+                      <div key={s.label} className="flex items-center justify-between gap-3">
+                        <dt className="text-muted">{t(s.label)}</dt>
+                        <dd className="flex shrink-0 gap-1">{s.keys.map((k) => <kbd key={k}>{keyLabel(k)}</kbd>)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              )}
+            </Popover>
+            </div>
+            <button type="button" aria-label={t('shortcut.publish')} data-tip={t('gallery.publishTip')} aria-keyshortcuts="N" onClick={() => pick(ACCEPT_ALL)}
+              className="tip tip-end inline-flex h-10 items-center gap-1.5 rounded-full bg-ink pr-4 pl-3 text-sm font-medium text-canvas hover:opacity-90 max-sm:w-10 max-sm:justify-center max-sm:px-0">
+              <UploadIcon className="size-[18px]" /><span className="max-sm:sr-only">{t('gallery.publish')}</span>
+            </button>
+          </div>
+        </div>
+
+        {filterCount > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5" aria-label={t('gallery.activeFilters')} role="group">
+            {visibility && (
+              <button type="button" onClick={() => setVisibility(null)} className={chip(false)} aria-label={t('gallery.removeFilter', { name: visibilityShort(visibility) })}>
+                {visibilityShort(visibility)} <CloseIcon className="size-3.5 text-muted" />
+              </button>
+            )}
+            {activeTags.map((tag) => (
+              <button key={tag} type="button" onClick={() => toggleTag(tag)} className={chip(false)} aria-label={t('gallery.removeTag', { name: tag })}>
+                #{tag} <CloseIcon className="size-3.5 text-muted" />
+              </button>
+            ))}
+            <button type="button" onClick={clearFilters} className="ml-1 text-[13px] text-muted underline decoration-line-strong hover:text-ink">{t('gallery.clearAll')}</button>
+          </div>
+        )}
+
+        <section aria-labelledby="kinds-title" className="mt-9 sm:mt-11">
+          <div className="flex items-baseline gap-3">
+            <h2 id="kinds-title" className="text-[15px] text-muted">{t('gallery.filterByType')}</h2>
+            {kind && (
+              <button type="button" onClick={() => setKind(null)} className="text-[13px] text-muted underline decoration-line-strong hover:text-ink">
+                {t('gallery.allTypes')}
+              </button>
+            )}
+          </div>
+          <div className="no-scrollbar -mx-5 mt-2 flex gap-3 overflow-x-auto px-5 pt-2 pb-3 sm:-mx-10 sm:px-10 lg:-mx-1.5 lg:px-1.5">
+            {KIND_FILTERS.map(({ kind: k }) => {
+              const label = kindTileLabel(k);
+              const Icon = KIND_ICON[k];
+              const count = kindCount(k);
+              const active = kind === k;
+              const dimmed = kind !== null && !active;
+              return (
+                <button key={k} type="button" aria-pressed={active} disabled={count === 0 && !active}
+                  aria-label={`${tn('gallery.kindTile', count, { label })}${active ? t('gallery.kindTileActive') : ''}`}
+                  onClick={() => setKind(active ? null : k)}
+                  className={`group flex w-[7.5rem] shrink-0 flex-col gap-2 rounded-xl text-left transition-opacity disabled:cursor-not-allowed disabled:opacity-40 sm:w-[8.75rem] ${dimmed ? 'opacity-45 hover:opacity-80' : ''}`}>
+                  <span className={`tile kind-${k} relative grid h-[5.25rem] w-full place-items-center rounded-xl transition-[filter] group-enabled:group-hover:brightness-110 sm:h-24 ${active ? 'ring-2 ring-ink ring-offset-2 ring-offset-canvas' : ''}`}>
+                    <Icon className="size-11 sm:size-12" />
+                    <span className="absolute top-2 right-2 rounded-full bg-black/25 px-2 py-0.5 text-[12px] font-medium tabular-nums text-white">{count}</span>
+                  </span>
+                  <span className="px-0.5 text-[15px]">{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section ref={gallery} tabIndex={-1} aria-label={currentFolder ? t('gallery.folderSection', { name: currentFolder.title ?? currentFolder.name ?? '' }) : t('gallery.published')} className="mt-9 outline-none sm:mt-12">
+          {loaded && project !== null && (
+            <nav aria-label={t('gallery.breadcrumb')} className="mb-4 sm:mb-5">
+              <ol className="flex min-w-0 items-center gap-1 text-[15px]">
+                <li className="shrink-0">
+                  <button type="button" onClick={leaveFolder} className="-mx-1.5 rounded-md px-1.5 py-0.5 text-muted underline decoration-transparent underline-offset-4 hover:text-ink hover:decoration-line-strong">{t('app.heading')}</button>
+                </li>
+                <li aria-hidden="true" className="shrink-0 text-muted"><ChevronRightIcon className="size-4" /></li>
+                <li aria-current="page" className="min-w-0 truncate">{project === NONE ? t('common.noFolder') : currentFolder ? currentFolder.title ?? currentFolder.name : project}</li>
+              </ol>
+            </nav>
+          )}
+          {!loaded ? null : currentFolder && inScope.length === 0 ? (
+            <div className="grid place-items-center gap-3 rounded-2xl border border-dashed border-line-strong px-6 py-16 text-center">
+              <FolderIcon className="size-7 text-muted" />
+              <p className="font-serif text-2xl leading-tight tracking-[-0.01em]">{t('gallery.folderEmpty', { name: currentFolder.name ?? '' })}</p>
+              <p className="max-w-md text-[15px] text-muted text-pretty">{t('gallery.folderEmptyHint')}</p>
+              <div className="mt-2 flex flex-wrap justify-center gap-2">
+                <button type="button" onClick={() => pick(ACCEPT_ALL)} className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-medium text-canvas hover:opacity-90">
+                  <UploadIcon className="size-4" />{t('gallery.publishHere')}
+                </button>
+                <button type="button" onClick={() => setFolderOpen(currentFolder.name)} className="rounded-full bg-surface-2 px-4 py-2 text-sm hover:bg-surface-3">{t('gallery.manageFolder')}</button>
+              </div>
+            </div>
+          ) : items.length === 0 && namedFolders.length === 0 ? (
+            <button type="button" data-static onClick={() => pick(ACCEPT_ALL)}
+              className="grid w-full place-items-center gap-3 rounded-2xl border border-dashed border-line-strong px-6 py-20 text-center text-[15px] text-muted hover:bg-surface">
+              <UploadIcon className="size-7" />
+              {t('gallery.firstDrop')}
+            </button>
+          ) : order.length === 0 ? (
+            <div className="rounded-2xl border border-line px-6 py-16 text-center">
+              <p className="text-[15px]">{t('gallery.noResults')}</p>
+              <p className="mt-1 text-sm text-muted">{t('gallery.noResultsHint')}</p>
+              {(filterCount > 0 || kind || q) && (
+                <button type="button" onClick={() => { clearFilters(); setQuery(''); }} className="mt-4 rounded-full bg-surface-2 px-4 py-2 text-sm hover:bg-surface-3">
+                  {t('gallery.clearSearchFilters')}
+                </button>
+              )}
+            </div>
+          ) : view === 'grid' ? (
+            <ul ref={list} onKeyDown={onListKey} aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End"
+              className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 lg:gap-x-8 lg:gap-y-8">
+              {folderCards.map((f) => {
+                const card = folderKey(f.name);
+                return <FolderCard key={card} f={f} tabbable={card === tabbableId} onFocusCard={() => setFocusId(card)} {...folderActionsFor(f)} />;
+              })}
+              {visible.map((a) => <ArtifactCard key={a.id} a={a} tabbable={a.id === tabbableId} onFocusCard={() => setFocusId(a.id)} {...actionsFor(a)} />)}
+            </ul>
+          ) : (
+            <ul ref={list} onKeyDown={onListKey} className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
+              {folderCards.map((f) => {
+                const card = folderKey(f.name);
+                return <FolderRow key={card} f={f} tabbable={card === tabbableId} onFocusCard={() => setFocusId(card)} {...folderActionsFor(f)} />;
+              })}
+              {visible.map((a) => {
+                const Icon = KIND_ICON[a.kind];
+                const act = actionsFor(a);
+                const tabbable = a.id === tabbableId;
+                const priv = a.visibility === 'private';
+                return (
+                  <li key={a.id} className="flex items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4">
+                    <button type="button" data-static data-card={a.id} tabIndex={tabbable ? 0 : -1} onFocus={() => setFocusId(a.id)} onClick={act.onPreview}
+                      draggable onDragStart={(e) => { e.dataTransfer.setData(CARD_DRAG_TYPE, a.id); e.dataTransfer.effectAllowed = 'move'; }}
+                      aria-label={t('card.openLabel', { title: a.title, version: '', pinned: a.pinned ? t('card.pinnedPart') : '' })} aria-keyshortcuts="E"
+                      className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left sm:gap-4">
+                      <span className={`band kind-${a.kind} grid size-10 shrink-0 place-items-center rounded-lg`}><Icon className="glyph size-5" /></span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          {a.pinned && <PinIcon className="size-3.5 text-muted" />}
+                          <span className="truncate text-[15px]">{a.title}</span>
+                        </span>
+                        <MetaLine a={a} />
+                        <span className="sr-only">{kindLabel(a.kind)}</span>
+                      </span>
+                      <span className="hidden shrink-0 font-mono text-xs text-muted lg:block">/a/{a.slug}{a.version && ` · v${a.version.number}`}</span>
+                    </button>
+                    <div className="hidden shrink-0 gap-1 text-sm sm:flex">
+                      <button type="button" tabIndex={tabbable ? 0 : -1} onClick={() => { if (!priv) act.onCopy(); }} aria-disabled={priv || undefined}
+                        data-tip={priv ? t('card.privateHint') : undefined} aria-label={priv ? t('gallery.copyLinkPrivate', { hint: t('card.privateHint') }) : t('common.copyLink')}
+                        className={`rounded-lg px-2.5 py-1.5 ${priv ? 'tip tip-end cursor-default text-muted' : 'hover:bg-surface-2'}`}>{t('common.copy')}</button>
+                      <button type="button" tabIndex={tabbable ? 0 : -1} onClick={act.onManage} className="rounded-lg px-2.5 py-1.5 hover:bg-surface-2">{t('common.manage')}</button>
+                    </div>
+                    <div className="shrink-0 sm:hidden">
+                      <ActionsMenu a={a} {...act} tabIndex={tabbable ? 0 : -1} triggerClass="grid size-9 place-items-center rounded-lg hover:bg-surface-2" />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      <input ref={fileInput} type="file" className="hidden" accept={ACCEPT_ALL}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) setPending(f); e.target.value = ''; }} />
+
+      {dragging && (
+        <div className="pointer-events-none fixed inset-0 z-50 grid place-items-center bg-[var(--scrim)] p-6">
+          <div className="enter-fade flex items-center gap-3 rounded-2xl border border-dashed border-line-strong bg-surface px-8 py-6 text-lg">
+            <UploadIcon className="size-6 text-muted" /> {t('gallery.dropToPublish')}
+          </div>
+        </div>
+      )}
+      {/* Outside #root: still announced when a modal layer makes the page inert. */}
+      {createPortal(
+        <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+          {notice && <div key={notice} className="enter-rise max-w-md rounded-xl bg-ink px-4 py-2.5 text-center text-sm text-canvas shadow-[0_10px_30px_-10px_oklch(0_0_0/0.5)]">{notice}</div>}
+        </div>,
+        document.body,
+      )}
+      {newFolder && <NewFolderDialog existing={projectNames} onClose={() => setNewFolder(null)} onCreated={onFolderCreated} />}
+      {pending && <PublishDialog key={`${pending.name}-${pending.lastModified}-${pending.size}`} file={pending} defaultProject={project && project !== NONE ? project : ''} projects={projectNames} tags={tagCounts.map((t) => t.name)} onClose={() => setPending(null)} onPublished={reload} />}
+      {loaded && folderOpen && !selected && (
+        <FolderDrawer key={folderOpen} name={folderOpen} summary={projects.find((p) => p.name === folderOpen)} onClose={() => setFolderOpen(null)}
+          onChanged={reload} onNotice={setNotice}
+          fallbackFocus={() => list.current?.querySelector<HTMLElement>(`[data-card="${CSS.escape(folderKey(folderOpen))}"]`) ?? gallery.current}
+          onRenamed={(n) => { setProject(n); setFolderOpen(n); }} />
+      )}
+      {loaded && selected && (
+        <ArtifactDrawer id={selected} summary={selectedSummary} order={artifactOrder} projects={projectNames} tagNames={tagCounts.map((t) => t.name)} links={links}
+          onNavigate={(id) => { setSelected(id); setFocusId(id); }} onClose={closeDrawer} onChanged={reload} onNotice={setNotice}
+          dirtyRef={drawerDirty} restoreFocus={() => cardFocusTarget(selected)} />
+      )}
+    </div>
+  );
+}

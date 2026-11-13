@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Welcome screen</title>
+<style>body{font:16px system-ui;margin:40px;background:#111;color:#eee}button{padding:12px 20px}</style></head>
+<body><h1>Welcome</h1><p>Mockup of a touch-screen welcome page. Tap to start.</p>
+<button onclick="localStorage.setItem('n',(+localStorage.getItem('n')||0)+1);this.textContent='Tapped '+localStorage.getItem('n')+' times'">Start</button>
+</body></html>

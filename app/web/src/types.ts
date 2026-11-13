@@ -1,0 +1,71 @@
+export type Kind = 'html' | 'markdown' | 'pdf' | 'json' | 'site';
+export type Visibility = 'private' | 'code' | 'link' | 'public';
+
+export interface ArtifactDto {
+  id: string; slug: string; title: string; kind: Kind; visibility: Visibility; hasCode: boolean; memoryStorage: boolean; project: string | null; tags: string[];
+  createdAt: string; updatedAt: string; url: string;
+  /** Most recent active share link (“link” visibility only). */
+  activeLinkUrl: string | null;
+  pinned: boolean; pinnedAt: string | null;
+  /** Views counted by the content server: all time and over the last 30 days. */
+  views: { total: number; last30: number };
+  version: { id: string; number: number; originalName: string; sizeBytes: number; fileCount: number; createdAt: string } | null;
+  /** Plain-text excerpt computed by the server (null for a PDF or an unreadable file). */
+  preview: { heading: string | null; text: string | null } | null;
+  /** Thumbnail of the current version, served by the admin API (relative path); null if none. */
+  thumbnailUrl: string | null;
+  /** Visibility of its project's folder (not private: the artifact is visible through the folder); null without a project. */
+  folderVisibility: Visibility | null;
+}
+
+export interface LinkDto {
+  id: string; label: string | null; url: string | null; expiresAt: string | null; revokedAt: string | null;
+  lastUsedAt: string | null; createdAt: string; active: boolean; openCount: number;
+}
+
+export interface ArtifactDetail extends ArtifactDto { links: LinkDto[] }
+export interface LabelCount<N = string> { name: N; count: number }
+
+export interface DayCount { day: string; views: number; uniques: number }
+
+export interface StatsDto {
+  /** All time; `uniques` adds up the distinct visitors of each day. */
+  total: { views: number; uniques: number };
+  /** UTC days, oldest first, zero-filled. */
+  days: DayCount[];
+  lastVisitAt: string | null;
+  links: { id: string; label: string | null; openCount: number; lastUsedAt: string | null; active: boolean }[];
+}
+
+export interface VersionDto {
+  id: string; number: number; kind: Kind; originalName: string; sizeBytes: number; fileCount: number; createdAt: string; current: boolean;
+  thumbnailUrl: string | null;
+}
+
+/** Folder summary: artifact count, private count, folder visibility. `name: null` = no folder. */
+export interface FolderSummary {
+  name: string | null; count: number; privateCount: number; visibility: Visibility; title: string | null;
+  /** Latest activity: folder sheet or most recent artifact (null: nothing). */
+  latestUpdatedAt: string | null;
+  /** Up to 4 artifacts, newest first: the folder card mosaic. */
+  recent: { id: string; kind: Kind; thumbnailUrl: string | null }[];
+  /** Visitor address of the folder and active share link (null for “no folder”). */
+  url: string | null; activeLinkUrl: string | null;
+}
+
+export interface FolderArtifact {
+  id: string; slug: string; title: string; kind: Kind; visibility: Visibility; position: number | null; updatedAt: string;
+  versionNumber: number | null; thumbnailUrl: string | null;
+}
+
+/** Shareable folder of a project (sheet created on the fly). */
+export interface FolderDetail {
+  name: string; title: string | null; description: string | null; visibility: Visibility; hasCode: boolean;
+  /** False until the folder has been described or shared (implicitly private). */
+  hasSheet: boolean;
+  createdAt: string | null; updatedAt: string | null;
+  url: string; activeLinkUrl: string | null; count: number; privateCount: number;
+  /** In visitor page order. */
+  artifacts: FolderArtifact[];
+  links: LinkDto[];
+}
