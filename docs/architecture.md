@@ -1,0 +1,107 @@
+# Architecture
+
+## Components
+
+```mermaid
+flowchart LR
+  Operator[Operator, private network] -->|HTTPS| P1[proxy or tailnet: admin host]
+  Visitor[Visitor, internet] -->|HTTPS| P2[proxy or Funnel: content host]
+  P1 --> A[app :3000 admin]
+  P2 --> C[app :3001 content]
+  A --> DB[(hub.sqlite)]
+  C --> DB
+  A --> FS[files/ thumbs/]
+  C --> FS
+  CLI[publish.py / Claude Code skill] -->|Bearer token| P1
+```
+
+One Node 24 process runs two independent [Hono](https://hono.dev) apps:
+
+- **admin** (`src/admin/`): the JSON API under `/api` and the built React SPA (`web/dist`). Strict CSP
+  `default-src 'self'; img-src 'self' data:; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`.
+- **content** (`src/content/`): artifact files, unlock forms, share-link exchange, folder pages and folder
+  thumbnails. It imports no admin route. Separation relies on ports and networks, never on the `Host` header.
+
+Server stack: TypeScript executed directly by Node (type stripping, no server build step), `node:sqlite`
+(no native dependency; still marked experimental, hence the pinned Node version in the image), `node:crypto`
+(scrypt, HKDF, HMAC, AES-GCM), `busboy`, `yauzl`, `markdown-it`, `highlight.js`, `sanitize-html`.
+Admin UI: React 19, Vite, Tailwind 4, no runtime UI library, hand-drawn SVG icons, a tiny typed i18n layer.
+
+## Request flow for a visitor
+
+1. `GET /a/<slug>`: visibility check (public, or a valid grant cookie). Private or missing: 404. `code`: unlock form.
+2. Redirect to a signed path `/a/<slug>/~<versionId>.<epoch>.<exp>.<mac>/<entry>`; relative assets inherit it.
+3. Signed paths are served with the sandbox CSP and `Access-Control-Allow-Origin: *` (opaque origins send
+   `Origin: null`); expired or stale signatures redirect to the unsigned path, which re-checks access.
+
+Share links: `GET /share/<token>` exchanges the token for a grant cookie and redirects, so the token leaves the
+address bar. Folder pages: `/d/<folder>`, cards enter through `/d/<folder>/a/<slug>`, which re-checks folder
+access and current membership before issuing the usual signed path.
+
+## Data
+
+```
+data/
+  hub.sqlite                                     # WAL, secure_delete
+  files/<artifactId>/<versionId>/                # extracted content, immutable
+  thumbs/<artifactId>/<versionId>.webp|png|jpg   # outside files/: never served by the content server directly
+  tmp/  backup/
+```
+
+Main tables: `artifacts` (slug, title, kind, visibility, code hash, access epoch, current version, folder, pin,
+folder position), `versions` (number, kind, entry path, size, thumbnail), `artifact_tags`, `projects` (folder sheets:
+title, description, visibility, code hash, epoch, salt), `share_links` (artifact **or** folder target, token hash +
+encrypted token, expiry, revocation, open count), `visit_days` / `folder_visit_days` (daily aggregates),
+`visit_seen` (fingerprints, two days max), `admin_sessions`. Migrations run in place at startup, idempotent, in one
+transaction (`src/db.ts`).
+
+Updates are atomic: a new version is extracted to its own folder, then one transaction inserts it and switches
+`current_version_id`. Retention after each upload or restore: Markdown and HTML versions are kept forever; ZIP sites,
+PDFs and JSON keep the 10 most recent; the current and the highest-numbered versions are never pruned.
+
+Markdown and JSON reader pages are rendered once at upload time into `index.html` next to the stored source, in the
+`HUB_LOCALE` language (`auto` renders English). `src/scripts/rerender-documents.ts` re-renders them after a template
+or locale change.
+
+## Admin API
+
+All routes are under `/api`, JSON in and out, authenticated by session cookie (mutations need `Origin` and
+`X-CSRF-Token`) or by `Authorization: Bearer <token>`. Errors are `{ "code": "<stable_code>", "error": "<English
+message>", "params"?: {…} }`; codes are listed in `app/src/errors.ts`.
+
+| Method | Route | Purpose |
+|---|---|---|
+| GET | `/session` | Session state and CSRF token |
+| POST | `/login`, `/logout` | Session (not available with the API token) |
+| GET | `/artifacts` | List; `?slug=` exact match, `?project=`, `?tag=` (repeatable) |
+| POST | `/artifacts` | Create (multipart: `file`, `title`, `slug`, `visibility`, `code`, `memoryStorage`, `project`, `tags`) |
+| GET, PATCH, DELETE | `/artifacts/:id` | Detail with links; update title, slug, visibility, code, memoryStorage, project, tags, pinned; delete |
+| PUT | `/artifacts/:id/content` | New version (multipart `file`) |
+| POST | `/artifacts/:id/revoke-all` | Bump the access epoch |
+| POST | `/artifacts/:id/share` | Switch to link visibility and create a link in one call (`hours`, `label`) |
+| POST, DELETE | `/artifacts/:id/links[/:linkId]` | Create (`label`, `expiresAt`) or revoke a share link |
+| GET | `/artifacts/:id/preview` | Signed admin preview URL (1 h) |
+| GET | `/artifacts/:id/stats?days=N` | Views, uniques, daily series, link opens |
+| GET | `/artifacts/:id/versions` | Versions, newest first |
+| GET | `/artifacts/:id/versions/:versionId/preview` | Pinned preview URL of any kept version |
+| POST | `/artifacts/:id/versions/:versionId/restore` | Make a version current |
+| GET | `/artifacts/:id/thumbnail`, `/artifacts/:id/versions/:versionId/thumbnail` | Thumbnails (private cache, ETag) |
+| PUT | `/artifacts/:id/versions/:versionId/thumbnail` | Raw WebP/PNG/JPEG body, 2 MiB max |
+| GET | `/tags` | Tag counts |
+| GET, POST | `/projects` | Folders with counts, activity and recent artifacts; create an empty private folder |
+| GET, PATCH, DELETE | `/projects/:name` | Folder detail; update title, description, visibility, code, name (rename); delete the sheet |
+| GET | `/projects/:name/preview` | Signed visitor-page preview URL (1 h) |
+| POST | `/projects/:name/share`, `/projects/:name/revoke-all` | Share for N hours; bump the folder epoch |
+| PUT | `/projects/:name/order` | Card order (`ids`) |
+| POST, DELETE | `/projects/:name/links[/:linkId]` | Folder share links |
+| GET | `/projects/:name/stats?days=N` | Folder page visits |
+| GET | `/slugs/:slug` | Slug validity and availability |
+
+## Internationalisation
+
+- Admin SPA: `web/src/i18n/{en,fr}.ts` dictionaries with typed keys, `t(key, params)`, `tn(key, n)` for plurals
+  (`Intl.PluralRules`), dates and numbers through `Intl` in the active locale. The locale is the saved preference
+  (`localStorage`), else `navigator.language` (`fr*` → French), else English; the toolbar and sign-in screen have a switch.
+- Visitor pages: `src/i18n.ts`, chosen per request from `HUB_LOCALE` (`auto` reads `Accept-Language`); `<html lang>`
+  follows, French typography (non-breaking spaces) only on French pages.
+- API errors: stable codes, English messages; the SPA maps codes to localised text and falls back to the message.
