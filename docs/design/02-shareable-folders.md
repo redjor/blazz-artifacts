@@ -60,4 +60,4 @@ redirect never counts); folder links count their openings.
 
 ## Out of scope
 
-Sub-folders, an artifact in several folders, downloading a folder as a ZIP, visitor comments.
+Sub-folders (see [03](03-sub-folders.md)), an artifact in several folders, downloading a folder as a ZIP, visitor comments.

@@ -6,3 +6,4 @@ the decisions and their reasons.
 
 - [01 — Core hub](01-core.md): publishing, isolation of untrusted content, access model, versions, thumbnails, statistics.
 - [02 — Shareable folders](02-shareable-folders.md): folders as shareable pages with combined access rules.
+- [03 — Sub-folders](03-sub-folders.md): folder trees with inherited access, flat URLs and a filtered breadcrumb.
