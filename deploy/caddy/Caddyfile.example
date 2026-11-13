@@ -1,0 +1,28 @@
+# Blazz Artifacts behind Caddy — two hostnames, two upstreams.
+# Use with deploy/docker-compose.yml (ports bound to 127.0.0.1 on the same host).
+#
+# Isolation notes:
+# - The admin and content servers MUST be on different hostnames (different origins). Published HTML runs
+#   in a CSP sandbox on the content origin; it must never share an origin with the admin UI.
+# - Restrict the admin hostname (allow-list, VPN, SSO forward-auth…). The admin also has its own password,
+#   rate limiting, CSRF and Origin checks, but it should not be on the open internet if you can avoid it.
+# - Do not add response headers that weaken the app's own CSP, X-Frame-Options or Referrer-Policy.
+# - Caddy appends the client address to X-Forwarded-For; the app trusts only the LAST entry. Do not put
+#   another proxy in front of Caddy that rewrites that header unless it appends too.
+
+admin.example.com {
+	@outside not remote_ip 192.0.2.0/24 2001:db8::/32
+	respond @outside 404
+
+	reverse_proxy 127.0.0.1:3000
+	request_body {
+		max_size 110MB
+	}
+}
+
+artifacts.example.com {
+	reverse_proxy 127.0.0.1:3001
+	request_body {
+		max_size 1MB
+	}
+}

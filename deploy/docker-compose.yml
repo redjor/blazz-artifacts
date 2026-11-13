@@ -1,0 +1,47 @@
+# Blazz Artifacts — generic deployment: the app only, both ports bound to 127.0.0.1.
+# Put any reverse proxy in front (see caddy/Caddyfile.example) with TWO hostnames:
+#   admin   → 127.0.0.1:3000   keep it private (VPN, tailnet, IP allow-list, SSO…)
+#   content → 127.0.0.1:3001   public: published artifacts, share links, folder pages
+#
+#   cp .env.example .env && chmod 600 .env   # fill in HUB_SECRET, URLs, password hash
+#   docker compose up -d --build
+
+name: blazz-artifacts
+
+services:
+  app:
+    build: ../app
+    image: ${BLAZZ_ARTIFACTS_IMAGE:-blazz-artifacts:local}
+    restart: unless-stopped
+    mem_limit: 256m
+    user: "1000:1000"
+    environment:
+      TZ: ${TZ:-UTC}
+      DATA_DIR: /data
+      HUB_SECRET: ${HUB_SECRET:?Set HUB_SECRET in .env}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+      API_TOKEN_HASH: ${API_TOKEN_HASH:-}
+      PUBLIC_HUB_URL: ${PUBLIC_HUB_URL:?Set PUBLIC_HUB_URL in .env}
+      PUBLIC_CONTENT_URL: ${PUBLIC_CONTENT_URL:?Set PUBLIC_CONTENT_URL in .env}
+      HUB_LOCALE: ${HUB_LOCALE:-en}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-100}
+      ZIP_MAX_FILES: ${ZIP_MAX_FILES:-2000}
+      ZIP_MAX_BYTES: ${ZIP_MAX_BYTES:-209715200}
+      # Inside the container both servers listen on all interfaces; the host only exposes them on loopback.
+      ADMIN_BIND: 0.0.0.0
+      CONTENT_BIND: 0.0.0.0
+    ports:
+      - "127.0.0.1:${ADMIN_PORT:-3000}:3000"
+      - "127.0.0.1:${CONTENT_PORT:-3001}:3001"
+    volumes:
+      - ./data:/data
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/').then(r=>process.exit(r.status===404?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

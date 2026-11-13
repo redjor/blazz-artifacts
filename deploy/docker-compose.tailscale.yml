@@ -1,0 +1,100 @@
+# Blazz Artifacts behind Tailscale — example: admin on the tailnet only, content public through Funnel.
+#
+# Two Tailscale sidecars on two Docker networks, no port published on the host:
+#   ts-admin    → app:3000 (admin)    tailnet only      (tailscale serve)
+#   ts-content  → app:3001 (content)  public            (tailscale funnel)
+# ts-content has no route to the admin address: a Funnel misconfiguration cannot expose the admin.
+# See ../docs/deployment.md for the Tailscale ACL, tags and auth keys.
+#
+#   cp .env.example .env && chmod 600 .env
+#   mkdir -p data ts-admin/state ts-content/state && sudo chown 1000:1000 data
+#   docker compose -f docker-compose.tailscale.yml up -d --build
+
+name: blazz-artifacts
+
+services:
+  app:
+    build: ../app
+    image: ${BLAZZ_ARTIFACTS_IMAGE:-blazz-artifacts:local}
+    restart: unless-stopped
+    mem_limit: 256m
+    user: "1000:1000"
+    environment:
+      TZ: ${TZ:-UTC}
+      DATA_DIR: /data
+      HUB_SECRET: ${HUB_SECRET:?Set HUB_SECRET in .env}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+      API_TOKEN_HASH: ${API_TOKEN_HASH:-}
+      PUBLIC_HUB_URL: ${PUBLIC_HUB_URL:?Set PUBLIC_HUB_URL (https://<admin-host>.<tailnet>.ts.net)}
+      PUBLIC_CONTENT_URL: ${PUBLIC_CONTENT_URL:?Set PUBLIC_CONTENT_URL (https://<content-host>.<tailnet>.ts.net)}
+      HUB_LOCALE: ${HUB_LOCALE:-en}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-100}
+      ZIP_MAX_FILES: ${ZIP_MAX_FILES:-2000}
+      ZIP_MAX_BYTES: ${ZIP_MAX_BYTES:-209715200}
+      ADMIN_BIND: 172.30.41.10
+      CONTENT_BIND: 172.30.42.10
+    volumes:
+      - ./data:/data
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks:
+      admin-net:
+        ipv4_address: 172.30.41.10
+      content-net:
+        ipv4_address: 172.30.42.10
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://172.30.42.10:3001/').then(r=>process.exit(r.status===404?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  ts-admin:
+    image: tailscale/tailscale:v1.104.4
+    hostname: ${TS_ADMIN_HOSTNAME:-artifacts-admin}
+    restart: unless-stopped
+    mem_limit: 96m
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY_ADMIN:?Set TS_AUTHKEY_ADMIN (tagged, non-reusable, non-ephemeral)}
+      TS_HOSTNAME: ${TS_ADMIN_HOSTNAME:-artifacts-admin}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ./ts-admin/state:/var/lib/tailscale
+      - ./tailscale/serve-admin.json:/config/serve.json:ro
+    networks: [admin-net]
+    depends_on:
+      app:
+        condition: service_healthy
+
+  ts-content:
+    image: tailscale/tailscale:v1.104.4
+    hostname: ${TS_CONTENT_HOSTNAME:-artifacts}
+    restart: unless-stopped
+    mem_limit: 96m
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY_CONTENT:?Set TS_AUTHKEY_CONTENT (tagged, non-reusable, non-ephemeral)}
+      TS_HOSTNAME: ${TS_CONTENT_HOSTNAME:-artifacts}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ./ts-content/state:/var/lib/tailscale
+      - ./tailscale/serve-content.json:/config/serve.json:ro
+    networks: [content-net]
+    depends_on:
+      app:
+        condition: service_healthy
+
+networks:
+  admin-net:
+    ipam:
+      config:
+        - subnet: 172.30.41.0/24
+  content-net:
+    ipam:
+      config:
+        - subnet: 172.30.42.0/24
