@@ -117,6 +117,11 @@ function migrateFolders(db: Db): void {
     // reused after a rename) restarts at epoch 1 without ever reviving an old access.
     const projectCols = db.prepare('PRAGMA table_info(projects)').all() as { name: string }[];
     if (!projectCols.some((c) => c.name === 'salt')) db.exec('ALTER TABLE projects ADD COLUMN salt TEXT');
+    // Sub-folders (design 03): one optional parent, sibling order. A foreign key on ADD COLUMN is allowed with a NULL
+    // default; ON UPDATE CASCADE makes children follow a rename. No ON DELETE: deleteProject re-parents children first.
+    if (!projectCols.some((c) => c.name === 'parent_name')) db.exec('ALTER TABLE projects ADD COLUMN parent_name TEXT REFERENCES projects(name) ON UPDATE CASCADE');
+    if (!projectCols.some((c) => c.name === 'position')) db.exec('ALTER TABLE projects ADD COLUMN position INTEGER');
+    db.exec('CREATE INDEX IF NOT EXISTS projects_parent ON projects(parent_name)');
     const setSalt = db.prepare('UPDATE projects SET salt = ? WHERE name = ?');
     for (const { name } of db.prepare('SELECT name FROM projects WHERE salt IS NULL').all() as { name: string }[]) setSalt.run(randomToken(16), name);
     const artCols = db.prepare('PRAGMA table_info(artifacts)').all() as { name: string }[];

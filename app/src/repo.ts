@@ -142,6 +142,10 @@ export interface Project {
   access_epoch: number; created_at: string; updated_at: string;
   /** Random, set when the sheet is created; bound to the folder's cookies, signed thumbnails and previews. */
   salt: string;
+  /** Parent folder (design 03); null: at the root. */
+  parent_name: string | null;
+  /** Order among siblings (admin-chosen); null: not placed. */
+  position: number | null;
 }
 
 export function getProject(db: Db, name: string): Project | undefined {
@@ -185,9 +189,17 @@ export function projectExists(db: Db, name: string): boolean {
   return !!db.prepare('SELECT 1 FROM projects WHERE name = ? UNION ALL SELECT 1 FROM artifacts WHERE project = ? LIMIT 1').get(name, name);
 }
 
-/** Deletes the sheet (and so its folder links and statistics); artifacts stay in their project. */
+/**
+ * Deletes the sheet (and so its folder links and statistics); artifacts stay in their project. Direct sub-folders move
+ * to the deleted sheet's parent (or the root) first. Opens its own transaction.
+ */
 export function deleteProject(db: Db, name: string): boolean {
-  return Number(db.prepare('DELETE FROM projects WHERE name = ?').run(name).changes) > 0;
+  return tx(db, () => {
+    const sheet = getProject(db, name);
+    if (!sheet) return false;
+    db.prepare('UPDATE projects SET parent_name = ?, position = NULL, updated_at = ? WHERE parent_name = ?').run(sheet.parent_name, nowIso(), name);
+    return Number(db.prepare('DELETE FROM projects WHERE name = ?').run(name).changes) > 0;
+  });
 }
 
 /** Folder artifacts in page order: newcomers (not placed) first, newest to oldest, then the chosen order. */
@@ -215,12 +227,12 @@ export function setProjectOrder(db: Db, name: string, ids: string[]): boolean {
   });
 }
 
-export interface FolderSummary { name: string | null; count: number; privateCount: number; visibility: Visibility; title: string | null }
+export interface FolderSummary { name: string | null; count: number; privateCount: number; visibility: Visibility; title: string | null; parent: string | null; position: number | null }
 
 /** Projects (with or without a sheet, empty folders included) with folder visibility and private artifact count; `name: null` last. */
 export function listFolders(db: Db): FolderSummary[] {
   const rows = db.prepare(`
-    SELECT n.name AS name, p.visibility AS visibility, p.title AS title,
+    SELECT n.name AS name, p.visibility AS visibility, p.title AS title, p.parent_name AS parent, p.position AS position,
       (SELECT COUNT(*) FROM artifacts a WHERE a.project = n.name) AS count,
       (SELECT COUNT(*) FROM artifacts a WHERE a.project = n.name AND a.visibility = 'private') AS private_count
     FROM (SELECT project AS name FROM artifacts WHERE project IS NOT NULL UNION SELECT name FROM projects) n
@@ -229,9 +241,10 @@ export function listFolders(db: Db): FolderSummary[] {
   const named: FolderSummary[] = rows.map((r) => ({
     name: r.name as string, count: Number(r.count), privateCount: Number(r.private_count),
     visibility: (r.visibility as Visibility | null) ?? 'private', title: (r.title as string | null) ?? null,
+    parent: (r.parent as string | null) ?? null, position: r.position === null || r.position === undefined ? null : Number(r.position),
   }));
   const none = db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(visibility = 'private'), 0) AS p FROM artifacts WHERE project IS NULL").get() as { n: number; p: number };
-  return Number(none.n) > 0 ? [...named, { name: null, count: Number(none.n), privateCount: Number(none.p), visibility: 'private', title: null }] : named;
+  return Number(none.n) > 0 ? [...named, { name: null, count: Number(none.n), privateCount: Number(none.p), visibility: 'private', title: null, parent: null, position: null }] : named;
 }
 
 export type ArtifactPatch = Partial<Pick<Artifact, 'title' | 'slug' | 'visibility' | 'code_hash' | 'memory_storage' | 'project'>>;

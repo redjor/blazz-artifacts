@@ -68,7 +68,8 @@ test('migration dossiers sur le schéma de production : share_links reconstruite
   assert.ok(cols.some((c) => c.name === 'project_name'));
   assert.ok(columns(db, 'artifacts').some((c) => c.name === 'project_position'));
   assert.deepEqual(columns(db, 'projects').map((c) => c.name),
-    ['name', 'title', 'description', 'visibility', 'code_hash', 'access_epoch', 'created_at', 'updated_at', 'salt']);
+    ['name', 'title', 'description', 'visibility', 'code_hash', 'access_epoch', 'created_at', 'updated_at', 'salt', 'parent_name', 'position']);
+  assert.ok(listFolders(db).every((f) => f.parent === null));
   const indexes = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'share_links'").all() as { name: string }[]).map((r) => r.name);
   for (const name of ['share_links_artifact', 'share_links_project']) assert.ok(indexes.includes(name), name);
   assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
@@ -133,8 +134,8 @@ test('projets : fiche créée à la volée, liste avec visibilité et privés, d
   assert.equal(getProject(db, 'client'), undefined, 'sans fiche : privé implicite');
   assert.deepEqual(listProjects(db), [{ name: 'client', count: 2 }, { name: null, count: 1 }], 'liste historique inchangée');
   assert.deepEqual(listFolders(db).map((p) => ({ ...p })), [
-    { name: 'client', count: 2, privateCount: 1, visibility: 'private', title: null },
-    { name: null, count: 1, privateCount: 1, visibility: 'private', title: null },
+    { name: 'client', count: 2, privateCount: 1, visibility: 'private', title: null, parent: null, position: null },
+    { name: null, count: 1, privateCount: 1, visibility: 'private', title: null, parent: null, position: null },
   ]);
   const p = upsertProject(db, 'client', { title: 'Client', visibility: 'link' });
   assert.equal(p.visibility, 'link');
@@ -237,4 +238,33 @@ test('fiche : sel aléatoire à la création, conservé par les mises à jour, n
   assert.equal(upsertProject(db, 'x', { title: 't' }, true).salt, a.salt);
   deleteProject(db, 'x');
   assert.notEqual(upsertProject(db, 'x', {}).salt, a.salt);
+});
+
+test('sub-folders: parent_name and position columns, rename cascades to children', () => {
+  const db = openDb(':memory:');
+  const cols = (db.prepare('PRAGMA table_info(projects)').all() as { name: string }[]).map((c) => c.name);
+  assert.ok(cols.includes('parent_name'));
+  assert.ok(cols.includes('position'));
+  upsertProject(db, 'client', {});
+  upsertProject(db, 'lot', {});
+  db.prepare('UPDATE projects SET parent_name = ? WHERE name = ?').run('client', 'lot');
+  db.exec('BEGIN');
+  renameProject(db, 'client', 'acme');
+  db.exec('COMMIT');
+  assert.equal(getProject(db, 'lot')!.parent_name, 'acme');
+  assert.equal(listFolders(db).find((f) => f.name === 'lot')!.parent, 'acme');
+});
+
+test('sub-folders: deleting a sheet moves its children to its own parent', () => {
+  const db = openDb(':memory:');
+  for (const n of ['a', 'b', 'c', 'd']) upsertProject(db, n, {});
+  db.prepare('UPDATE projects SET parent_name = ? WHERE name = ?').run('a', 'b');
+  db.prepare('UPDATE projects SET parent_name = ?, position = 3 WHERE name = ?').run('b', 'c');
+  db.prepare('UPDATE projects SET parent_name = ? WHERE name = ?').run('b', 'd');
+  assert.equal(deleteProject(db, 'b'), true);
+  assert.equal(getProject(db, 'c')!.parent_name, 'a');
+  assert.equal(getProject(db, 'c')!.position, null);
+  assert.equal(getProject(db, 'd')!.parent_name, 'a');
+  assert.equal(deleteProject(db, 'a'), true);
+  assert.equal(getProject(db, 'c')!.parent_name, null);
 });

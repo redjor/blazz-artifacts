@@ -448,7 +448,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     return name;
   };
   const folderSheet = (name: string): Project =>
-    getProject(db, name) ?? { name, title: null, description: null, visibility: 'private', code_hash: null, access_epoch: 1, created_at: '', updated_at: '', salt: '' };
+    getProject(db, name) ?? { name, title: null, description: null, visibility: 'private', code_hash: null, access_epoch: 1, created_at: '', updated_at: '', salt: '', parent_name: null, position: null };
 
   const folderActiveLinkUrl = (p: Project): string | null => {
     if (p.visibility !== 'link') return null;
