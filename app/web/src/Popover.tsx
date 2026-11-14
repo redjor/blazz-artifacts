@@ -57,8 +57,10 @@ export function Popover({ label, tip, trigger, triggerClass, panelClass, wrapCla
         {trigger}
       </button>
       {open && (
-        <div ref={panel} id={id} role="group" aria-label={label}
-          className={`enter-pop surface-raised absolute top-full z-40 mt-2 rounded-xl bg-surface ${align === 'end' ? 'right-0 origin-top-right' : 'left-0 origin-top-left'} ${panelClass}`}>
+        // tabIndex -1: a press on non-focusable content (a radio's <label>, padding; any button in Safari) moves focus to
+        // the panel instead of the body, so the blur check above does not close the menu before the click lands.
+        <div ref={panel} id={id} role="group" aria-label={label} tabIndex={-1}
+          className={`enter-pop surface-raised absolute top-full z-40 mt-2 rounded-xl bg-surface outline-none ${align === 'end' ? 'right-0 origin-top-right' : 'left-0 origin-top-left'} ${panelClass}`}>
           {children(() => close())}
         </div>
       )}
