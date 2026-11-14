@@ -72,6 +72,10 @@ a dedicated cookie (`__Host-fgrant_<name>`) and key. Folder thumbnails are serve
 and current membership. The admin UI asks for confirmation (with the count) before sharing a folder that contains private
 artifacts or moving a non-public artifact into a shared folder.
 
+### Sub-folders
+
+Folders nest up to 4 levels, and access is always inherited: a visitor reaches folder F if F or any ancestor grants access, each checked with its own cookie and epoch; the highest granting folder wins. A private child is reachable through its parent. `/d/<F>/a/<slug>` serves direct members of F only. The breadcrumb starts at the highest ancestor the visitor can access, and the unlock page only names the requested folder, never its parent. Thumbnail signatures are bound to the granting folder and the displayed folder (the granting folder is re-checked as a current ancestor). Moving a folder out of a parent, or deleting the parent, cuts inherited access immediately; page-issued thumbnail signatures can remain valid for up to 1 hour.
+
 ## Admin
 
 Single account. Password: scrypt (`scrypt:N:r:p:salt:hash`, no `$` so Compose does not interpolate it). Session cookie

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Sub-folders: folders can be nested up to 4 levels; access to a folder opens its sub-folders.
+
 ## 0.1.0 — initial public release
 
 - Publish HTML pages, Markdown (GFM, highlighting, sanitised), PDF, JSON and ZIP sites; drag and drop or CLI.

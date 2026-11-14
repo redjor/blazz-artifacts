@@ -44,6 +44,8 @@ python3 publish.py --thumbnail-only --slug demo
 python3 publish.py ./site --dry-run
 ```
 
+Sub-folders are created and moved in the admin UI. `--project <name>` targets a folder at any level, and folders created by the CLI go to the root.
+
 A folder argument is zipped (hidden files and symbolic links skipped unless `--include-dotfiles`; `.git`, `.DS_Store`,
 `__MACOSX`, `node_modules` always skipped). Exit codes: 0 success, 1 failure, 2 usage error (nothing sent).
 Run `python3 publish.py --help` for every option; [SKILL.md](../cli/publish-artifact/SKILL.md) documents them all.
