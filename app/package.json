@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.5",
+    "@tanstack/react-router": "^1.170.46",
     "@types/busboy": "^1.5.5",
     "@types/markdown-it": "^14.2.0",
     "@types/node": "^26.6.6",

@@ -90,7 +90,7 @@ parent's code, which would reveal the parent.
 
 - Root: top-level folders only, then artifacts without a folder.
 - Inside a folder: admin breadcrumb (every ancestor, no access filtering), sub-folder cards, then artifacts.
-- The `#project=<name>` hash is unchanged; the name is unique.
+- A folder's admin URL is `/f/<name>` (the name is unique); it replaced the `#project=<name>` hash, still redirected.
 - "New folder" creates the folder inside the current folder by default.
 - "Move to…" in the folder panel opens a tree picker that excludes the folder itself and its descendants. No drag and drop
   in v1.

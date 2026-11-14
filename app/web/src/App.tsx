@@ -1,3 +1,4 @@
+import { Outlet } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { api, onUnauthorized } from './api.ts';
 import { Dashboard } from './Dashboard.tsx';
@@ -21,7 +22,10 @@ export function App() {
 
   if (state === 'loading') return <div className="grid min-h-dvh place-items-center text-sm text-muted">{t('common.loading')}</div>;
   if (state === 'anon') return <Login key={locale} onDone={() => setState('auth')} />;
+  // Root route component: the child routes render nothing; the Outlet only renders the unknown-path redirect.
   return (
+    <>
+    <Outlet />
     <Dashboard
       locale={locale}
       onLogout={async () => {
@@ -33,5 +37,6 @@ export function App() {
         setState('anon');
       }}
     />
+    </>
   );
 }

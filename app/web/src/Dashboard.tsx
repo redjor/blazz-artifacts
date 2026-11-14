@@ -1,3 +1,4 @@
+import { useBlocker, useMatchRoute, useParams, useRouter, useSearch } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { api, copyDeferred, copyText, openPreview } from './api.ts';
@@ -8,7 +9,6 @@ import { confirmExposure, deleteChildrenNote, FolderDrawer, type TabId } from '.
 import { ACCEPT_ALL, compareText, KIND_FILTERS, kindLabel, kindTileLabel, VISIBILITY_ORDER, visibilityLabel, visibilityShort } from './format.ts';
 import { t, tn, type Locale, type MessageKey } from './i18n/index.ts';
 import { LanguageSwitch } from './LanguageSwitch.tsx';
-import { readHash, writeHash } from './hash.ts';
 import { CheckIcon, ChevronDownIcon, CloseIcon, FilterIcon, FolderPlusIcon, GridIcon, KIND_ICON, KeyboardIcon, ListIcon, LogoutIcon, PinIcon, PlusIcon, SearchIcon, UploadIcon, VISIBILITY_ICON } from './icons.tsx';
 import { hasOpenLayer, isEditable } from './layers.ts';
 import { Popover, type PopoverHandle } from './Popover.tsx';
@@ -18,7 +18,7 @@ import { NewFolderDialog } from './NewFolderDialog.tsx';
 import { PublishDialog } from './PublishDialog.tsx';
 import type { ArtifactDto, FolderSummary, Kind, LabelCount, Visibility } from './types.ts';
 
-// Folder (project) filter in the hash (#project=x); “~none” = no folder (“~” is not a valid label character).
+// Current folder: its name, null at the root, “~none” on /unfiled (“~” is not a valid label character).
 const NONE = '~none';
 
 const remember = <T extends string>(key: string, allowed: readonly T[], fallback: T) => ({
@@ -110,13 +110,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   // “New folder” dialog; `moveId`: artifact to move into it once created (from a card's menu).
   const [newFolder, setNewFolder] = useState<{ moveId: string | null } | null>(null);
   const [tagCounts, setTagCounts] = useState<LabelCount[]>([]);
-  const [project, setProjectState] = useState<string | null>(() => readHash('project'));
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [visibility, setVisibility] = useState<Visibility | null>(null);
   const [kind, setKind] = useState<Kind | null>(null);
   const [view, setViewState] = useState<View>(viewPref.read);
   const [sort, setSortState] = useState<Sort>(sortPref.read);
-  const [selected, setSelectedState] = useState<string | null>(() => readHash('a'));
   const [focusId, setFocusId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -127,38 +125,43 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const shortcuts = useRef<PopoverHandle>(null);
   const gallery = useRef<HTMLElement>(null);
   const drawerDirty = useRef(false);
-  // Read by the hash listener (installed once): latest known state.
-  const latest = useRef({ items, loaded, selected });
+
+  // URL state (see router.tsx): the folder is the path, the open artifact is `?a=`.
+  const router = useRouter();
+  const matchRoute = useMatchRoute();
+  const params = useParams({ strict: false });
+  const search = useSearch({ strict: false });
+  const project = params.folder ?? (matchRoute({ to: '/unfiled' }) ? NONE : null);
+  const selected = search.a ?? null;
+  // Read by callbacks created once (reload, closeDrawer): latest known state.
+  const latest = useRef({ project, selected });
   useEffect(() => {
-    latest.current = { items, loaded, selected };
+    latest.current = { project, selected };
   });
 
-  const setProject = (p: string | null) => {
-    setProjectState(p);
-    writeHash({ project: p });
-  };
-  const setSelected = (id: string | null) => {
-    setSelectedState(id);
-    writeHash({ a: id });
+  /** Navigates to a folder (`NONE`: no folder, null: root) and an artifact panel. A new history entry unless `replace`. */
+  const go = useCallback((p: string | null, a: string | null, replace = false) => {
+    const query = a ? { a } : {};
+    if (p === null) void router.navigate({ to: '/', search: query, replace });
+    else if (p === NONE) void router.navigate({ to: '/unfiled', search: query, replace });
+    else void router.navigate({ to: '/f/$folder', params: { folder: p }, search: query, replace });
+  }, [router]);
+  const setProject = (p: string | null, replace = false) => go(p, null, replace);
+  // The panel opened with a history entry (Back closes it); opened from a link or a reload, closing replaces the URL.
+  const pushedPanel = useRef(false);
+  const openArtifact = (id: string) => {
+    pushedPanel.current = true;
+    go(project, id);
   };
   useEffect(() => {
-    const onHash = () => {
-      setProjectState(readHash('project'));
-      const { items: known, loaded: ready, selected: current } = latest.current;
-      let next = readHash('a');
-      if (next === current) return;
-      // Unknown identifier: hash cleaned, panel closed (list not loaded yet: reload decides).
-      if (next && ready && !known.some((a) => a.id === next)) next = null;
-      if (current && drawerDirty.current && !window.confirm(t('common.discardConfirm'))) {
-        writeHash({ a: current });
-        return;
-      }
-      if (next !== readHash('a')) writeHash({ a: next });
-      setSelectedState(next);
-    };
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
-  }, []);
+    if (!selected) pushedPanel.current = false;
+  }, [selected]);
+  // Browser Back/Forward away from a panel with unsaved changes: the same question as the panel's own close.
+  useBlocker({
+    shouldBlockFn: ({ current, next, action }) =>
+      action !== 'PUSH' && action !== 'REPLACE' && drawerDirty.current && current.search.a !== next.search.a && !window.confirm(t('common.discardConfirm')),
+    enableBeforeUnload: false,
+  });
 
   const setView = (v: View) => {
     setViewState(v);
@@ -180,22 +183,20 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
             const kept = cur.filter((t) => ts.some((x) => x.name === t));
             return kept.length === cur.length ? cur : kept;
           });
-          setProjectState((cur) => {
-            if (cur === null || cur === NONE || ps.some((x) => x.name === cur)) return cur;
-            writeHash({ project: null });
-            return null;
-          });
-          // Artifact from the hash deleted meanwhile: close quietly.
-          setSelectedState((cur) => {
-            if (cur === null || list.some((a) => a.id === cur)) return cur;
-            writeHash({ a: null });
-            return null;
-          });
+          // Folder or artifact of the URL deleted meanwhile (or unknown): back to the root / panel closed, quietly.
+          const { project: p, selected: a } = latest.current;
+          const keepP = p === null || p === NONE || ps.some((x) => x.name === p) ? p : null;
+          const keepA = a !== null && list.some((x) => x.id === a) ? a : null;
+          if (keepP !== p || keepA !== a) go(keepP, keepA, true);
         })
         .catch((e) => setNotice((e as Error).message))
         .finally(() => setLoaded(true)),
-    [],
+    [go],
   );
+  // An artifact link (`?a=`) that is not in the loaded list (Back/Forward to a deleted one): panel closed.
+  useEffect(() => {
+    if (loaded && selected && !items.some((a) => a.id === selected)) go(project, null, true);
+  }, [loaded, selected, items, project, go]);
   useEffect(() => {
     void reload();
   }, [reload]);
@@ -315,7 +316,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       e.preventDefault();
       const folder = folderOfKey(id);
       if (folder) setFolderOpen({ name: folder });
-      else setSelected(id);
+      else openArtifact(id);
       return;
     }
     const i = order.indexOf(id);
@@ -469,7 +470,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       setNotice(t('notice.folderDeleted'));
       // Deleted from its own page (breadcrumb menu): back to its parent, focus on the gallery.
       const here = f.name === project;
-      if (here) setProject(f.parent);
+      if (here) setProject(f.parent, true);
       await reload();
       requestAnimationFrame(() => (here ? gallery.current : cardFocusTarget(card))?.focus());
     } catch (e) {
@@ -496,7 +497,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
     folders: projectNames,
     onMove: (to: string | null) => void move(a, to),
     onNewFolder: () => setNewFolder({ moveId: a.id }),
-    onManage: () => setSelected(a.id),
+    onManage: () => openArtifact(a.id),
     onPreview: () => void run(() => openPreview(a.id)),
     onCopy: () => void copyLink(a),
     onShare: () => void share(a),
@@ -504,9 +505,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   });
 
   const closeDrawer = useCallback(() => {
-    setSelectedState(null);
-    writeHash({ a: null });
-  }, []);
+    // The panel already asked about unsaved changes: the Back blocker must not ask again.
+    drawerDirty.current = false;
+    if (pushedPanel.current) {
+      pushedPanel.current = false;
+      router.history.back();
+    } else go(latest.current.project, null, true);
+  }, [router, go]);
   const selectedSummary = selected ? items.find((a) => a.id === selected) : undefined;
   // Position of the open artifact: if its card disappears (deletion), focus goes to its neighbour.
   const lastIndex = useRef(0);
@@ -807,11 +812,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
         <FolderDrawer key={folderOpen.name} name={folderOpen.name} initialTab={folderOpen.tab} folders={namedFolders} summary={projects.find((p) => p.name === folderOpen.name)} onClose={() => setFolderOpen(null)}
           onChanged={reload} onNotice={setNotice}
           fallbackFocus={() => list.current?.querySelector<HTMLElement>(`[data-card="${CSS.escape(folderKey(folderOpen.name))}"]`) ?? gallery.current}
-          onRenamed={(n) => { setProject(n); setFolderOpen({ name: n }); }} />
+          onRenamed={(n) => { setProject(n, true); setFolderOpen({ name: n }); }} />
       )}
       {loaded && selected && (
         <ArtifactDrawer id={selected} summary={selectedSummary} order={artifactOrder} projects={projectNames} paths={folderPaths} tagNames={tagCounts.map((t) => t.name)} links={links}
-          onNavigate={(id) => { setSelected(id); setFocusId(id); }} onClose={closeDrawer} onChanged={reload} onNotice={setNotice}
+          onNavigate={(id) => { go(project, id, true); setFocusId(id); }} onClose={closeDrawer} onChanged={reload} onNotice={setNotice}
           dirtyRef={drawerDirty} restoreFocus={() => cardFocusTarget(selected)} />
       )}
     </div>

@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Sub-folders: folders can be nested up to 4 levels; access to a folder opens its sub-folders.
+- Admin URLs are real paths (`/f/<folder>`, `/unfiled`, `?a=<id>`) and the browser's Back button returns to the
+  previous folder or closes the artifact panel. Old `#project=…&a=…` links are redirected.
 
 ## 0.1.0 — initial public release
 

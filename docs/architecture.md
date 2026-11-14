@@ -19,6 +19,8 @@ One Node 24 process runs two independent [Hono](https://hono.dev) apps:
 
 - **admin** (`src/admin/`): the JSON API under `/api` and the built React SPA (`web/dist`). Strict CSP
   `default-src 'self'; img-src 'self' data:; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`.
+  Any other path serves `index.html`; the SPA routes with TanStack Router (`web/src/router.tsx`): `/` the gallery
+  root, `/f/<name>` a folder, `/unfiled` artifacts with no folder, `?a=<id>` an artifact's panel over any of them.
 - **content** (`src/content/`): artifact files, unlock forms, share-link exchange, folder pages and folder
   thumbnails. It imports no admin route. Separation relies on ports and networks, never on the `Host` header.
 
