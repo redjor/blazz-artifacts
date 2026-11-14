@@ -1,5 +1,6 @@
 import { useState, type DragEvent, type ReactNode } from 'react';
 import { CARD_DRAG_TYPE, ThumbImage, useThumbnail } from './ArtifactCard.tsx';
+import { FolderLink } from './FolderLink.tsx';
 import { formatDate, relativeDate, visibilityLabel, visibilityShort } from './format.ts';
 import { t, tn } from './i18n/index.ts';
 import { CopyIcon, FolderFilledIcon, KIND_ICON, MoreIcon, OpenIcon, ShareIcon, SlidersIcon, TrashIcon, VISIBILITY_ICON } from './icons.tsx';
@@ -134,7 +135,7 @@ export function FolderCard({ f, sharedViaTitle, tabbable, onFocusCard, ...action
   const slots = [0, 1, 2, 3].map((i) => f.recent[i]);
   return (
     <li className={`group relative min-w-0 ${menuOpen ? 'z-20' : ''}`} {...handlers}>
-      <button type="button" data-static data-card={folderKey(f.name)} tabIndex={tabbable ? 0 : -1} onFocus={onFocusCard} onClick={actions.onOpen}
+      <FolderLink name={f.name} onOpen={actions.onOpen} data-card={folderKey(f.name)} tabIndex={tabbable ? 0 : -1} onFocus={onFocusCard} draggable={false}
         aria-label={openLabel(f)} aria-keyshortcuts="E"
         className={`card block w-full overflow-hidden rounded-2xl border text-left transition-[border-color,background-color] ${over ? 'drop-over border-ring' : 'border-line bg-surface hover:border-line-strong'}`}>
         <span aria-hidden="true" className="folder-mosaic grid aspect-[2/1] grid-cols-2 grid-rows-2 gap-2 p-3 sm:gap-2.5 sm:p-3.5">
@@ -147,7 +148,7 @@ export function FolderCard({ f, sharedViaTitle, tabbable, onFocusCard, ...action
             <FolderMeta f={f} sharedViaTitle={sharedViaTitle} className="mt-0.5" />
           </span>
         </span>
-      </button>
+      </FolderLink>
       <div className={`absolute top-3 right-3 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${menuOpen ? 'opacity-100' : 'opacity-0'}`}>
         <FolderMenu f={f} {...actions} onOpenChange={setMenuOpen} tabIndex={tabbable ? 0 : -1}
           triggerClass="grid size-8 place-items-center rounded-lg bg-black/65 text-white shadow-sm ring-1 ring-white/15 hover:bg-black/80" />
@@ -160,7 +161,7 @@ export function FolderRow({ f, sharedViaTitle, tabbable, onFocusCard, ...actions
   const { over, handlers } = useCardDrop(actions.onDropCard);
   return (
     <li className={`flex items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4 ${over ? 'drop-over' : ''}`} {...handlers}>
-      <button type="button" data-static data-card={folderKey(f.name)} tabIndex={tabbable ? 0 : -1} onFocus={onFocusCard} onClick={actions.onOpen}
+      <FolderLink name={f.name} onOpen={actions.onOpen} data-card={folderKey(f.name)} tabIndex={tabbable ? 0 : -1} onFocus={onFocusCard} draggable={false}
         aria-label={openLabel(f)} aria-keyshortcuts="E" className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left sm:gap-4">
         <span className="folder-mosaic grid size-10 shrink-0 place-items-center rounded-lg"><FolderFilledIcon className="folder-glyph size-6" /></span>
         <span className="min-w-0 flex-1">
@@ -168,7 +169,7 @@ export function FolderRow({ f, sharedViaTitle, tabbable, onFocusCard, ...actions
           <FolderMeta f={f} sharedViaTitle={sharedViaTitle} />
         </span>
         {f.title && <span className="hidden shrink-0 font-mono text-xs text-muted lg:block">/d/{f.name}</span>}
-      </button>
+      </FolderLink>
       <div className="hidden shrink-0 gap-1 text-sm sm:flex">
         <button type="button" tabIndex={tabbable ? 0 : -1} onClick={actions.onManage} className="rounded-lg px-2.5 py-1.5 hover:bg-surface-2">{t('common.manage')}</button>
       </div>

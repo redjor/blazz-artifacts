@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { FolderLink } from './FolderLink.tsx';
 import { t } from './i18n/index.ts';
 
 /**
@@ -13,8 +14,8 @@ export function FolderBreadcrumb({ trail, current, onOpen }: {
       <ol className="flex min-w-0 items-center text-[15px]">
         {trail.map((item, i) => (
           <li key={item.name ?? '~root'} className={`flex min-w-0 items-center ${i > 0 ? 'max-sm:hidden' : 'shrink-0'}`}>
-            <button type="button" onClick={() => onOpen(item.name)} title={item.title}
-              className="block max-w-[12rem] truncate rounded-md px-1.5 py-1 text-ink hover:bg-surface-2">{item.title}</button>
+            <FolderLink name={item.name} onOpen={() => onOpen(item.name)} title={item.title}
+              className="block max-w-[12rem] truncate rounded-md px-1.5 py-1 text-ink hover:bg-surface-2">{item.title}</FolderLink>
             <span aria-hidden="true" className="shrink-0 px-1 text-muted">/</span>
           </li>
         ))}
