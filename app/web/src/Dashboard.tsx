@@ -12,6 +12,8 @@ import { readHash, writeHash } from './hash.ts';
 import { CheckIcon, ChevronRightIcon, CloseIcon, FilterIcon, FolderIcon, FolderPlusIcon, GridIcon, KIND_ICON, KeyboardIcon, ListIcon, LogoutIcon, PinIcon, SearchIcon, SortIcon, UploadIcon, VISIBILITY_ICON } from './icons.tsx';
 import { hasOpenLayer, isEditable } from './layers.ts';
 import { Popover, type PopoverHandle } from './Popover.tsx';
+import { ancestorsOf, childrenOf, folderPath, treeOptions } from './folderTree.ts';
+import { FolderBreadcrumb } from './FolderBreadcrumb.tsx';
 import { NewFolderDialog } from './NewFolderDialog.tsx';
 import { PublishDialog } from './PublishDialog.tsx';
 import type { ArtifactDto, FolderSummary, Kind, LabelCount, Visibility } from './types.ts';
@@ -221,15 +223,18 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
     )
     .sort((x, y) => byPinned(x, y) || COMPARE[sort](x, y));
   const namedFolders = projects.filter((p): p is NamedFolder => p.name !== null);
-  const folderCards = atRoot && !filtersActive
-    ? namedFolders.filter((f) => !q || f.name.includes(q) || !!f.title?.toLowerCase().includes(q)).sort(FOLDER_COMPARE[sort])
-    : [];
+  // Root: top-level folders (a search lists every matching folder, whatever its level). Inside a folder: its sub-folders.
+  const inFolder = project !== null && project !== NONE ? project : null;
+  const folderCards: NamedFolder[] = filtersActive ? [] : atRoot
+    ? namedFolders.filter((f) => (q ? f.name.includes(q) || !!f.title?.toLowerCase().includes(q) : f.parent === null)).sort(FOLDER_COMPARE[sort])
+    : inFolder ? (childrenOf(namedFolders, inFolder) as NamedFolder[]) : [];
   const artifactOrder = visible.map((a) => a.id);
   const order = [...folderCards.map((f) => folderKey(f.name)), ...artifactOrder];
   // Roving tabindex: a single card reachable with Tab, arrows do the rest.
   const tabbableId = focusId && order.includes(focusId) ? focusId : order[0];
 
-  const projectNames = projects.flatMap((p) => (p.name === null ? [] : [p.name]));
+  const projectNames = treeOptions(namedFolders).map((o) => o.folder.name);
+  const folderPaths = Object.fromEntries(namedFolders.map((f) => [f.name, folderPath(namedFolders, f.name)]));
   const currentFolder = project && project !== NONE ? projects.find((p) => p.name === project) ?? null : null;
   const FolderVisIcon = currentFolder && currentFolder.visibility !== 'private' ? VISIBILITY_ICON[currentFolder.visibility] : null;
   const toggleTag = (t: string) => setActiveTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
@@ -685,18 +690,27 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
         </section>
 
         <section ref={gallery} tabIndex={-1} aria-label={currentFolder ? t('gallery.folderSection', { name: currentFolder.title ?? currentFolder.name ?? '' }) : t('gallery.published')} className="mt-9 outline-none sm:mt-12">
-          {loaded && project !== null && (
+          {loaded && currentFolder && (
+            <FolderBreadcrumb
+              trail={[
+                { name: null, title: t('tree.root') },
+                ...ancestorsOf(namedFolders, currentFolder.name!).map((a) => ({ name: a.name, title: a.title ?? a.name })),
+                { name: currentFolder.name, title: currentFolder.title ?? currentFolder.name! },
+              ]}
+              onOpen={(name) => (name === null ? leaveFolder() : setProject(name))} />
+          )}
+          {loaded && project !== null && !currentFolder && (
             <nav aria-label={t('gallery.breadcrumb')} className="mb-4 sm:mb-5">
               <ol className="flex min-w-0 items-center gap-1 text-[15px]">
                 <li className="shrink-0">
                   <button type="button" onClick={leaveFolder} className="-mx-1.5 rounded-md px-1.5 py-0.5 text-muted underline decoration-transparent underline-offset-4 hover:text-ink hover:decoration-line-strong">{t('app.heading')}</button>
                 </li>
                 <li aria-hidden="true" className="shrink-0 text-muted"><ChevronRightIcon className="size-4" /></li>
-                <li aria-current="page" className="min-w-0 truncate">{project === NONE ? t('common.noFolder') : currentFolder ? currentFolder.title ?? currentFolder.name : project}</li>
+                <li aria-current="page" className="min-w-0 truncate">{project === NONE ? t('common.noFolder') : project}</li>
               </ol>
             </nav>
           )}
-          {!loaded ? null : currentFolder && inScope.length === 0 ? (
+          {!loaded ? null : currentFolder && inScope.length === 0 && folderCards.length === 0 ? (
             <div className="grid place-items-center gap-3 rounded-2xl border border-dashed border-line-strong px-6 py-16 text-center">
               <FolderIcon className="size-7 text-muted" />
               <p className="font-serif text-2xl leading-tight tracking-[-0.01em]">{t('gallery.folderEmpty', { name: currentFolder.name ?? '' })}</p>
@@ -795,8 +809,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
         </div>,
         document.body,
       )}
-      {newFolder && <NewFolderDialog existing={projectNames} onClose={() => setNewFolder(null)} onCreated={onFolderCreated} />}
-      {pending && <PublishDialog key={`${pending.name}-${pending.lastModified}-${pending.size}`} file={pending} defaultProject={project && project !== NONE ? project : ''} projects={projectNames} tags={tagCounts.map((t) => t.name)} onClose={() => setPending(null)} onPublished={reload} />}
+      {newFolder && <NewFolderDialog existing={namedFolders.map((f) => f.name)} parent={inFolder} parentTitle={currentFolder?.title ?? undefined} onClose={() => setNewFolder(null)} onCreated={onFolderCreated} />}
+      {pending && <PublishDialog key={`${pending.name}-${pending.lastModified}-${pending.size}`} file={pending} defaultProject={project && project !== NONE ? project : ''} projects={projectNames} paths={folderPaths} tags={tagCounts.map((t) => t.name)} onClose={() => setPending(null)} onPublished={reload} />}
       {loaded && folderOpen && !selected && (
         <FolderDrawer key={folderOpen} name={folderOpen} summary={projects.find((p) => p.name === folderOpen)} onClose={() => setFolderOpen(null)}
           onChanged={reload} onNotice={setNotice}
@@ -804,7 +818,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
           onRenamed={(n) => { setProject(n); setFolderOpen(n); }} />
       )}
       {loaded && selected && (
-        <ArtifactDrawer id={selected} summary={selectedSummary} order={artifactOrder} projects={projectNames} tagNames={tagCounts.map((t) => t.name)} links={links}
+        <ArtifactDrawer id={selected} summary={selectedSummary} order={artifactOrder} projects={projectNames} paths={folderPaths} tagNames={tagCounts.map((t) => t.name)} links={links}
           onNavigate={(id) => { setSelected(id); setFocusId(id); }} onClose={closeDrawer} onChanged={reload} onNotice={setNotice}
           dirtyRef={drawerDirty} restoreFocus={() => cardFocusTarget(selected)} />
       )}

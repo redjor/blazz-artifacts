@@ -100,7 +100,7 @@ function FolderMeta({ f, className = '' }: { f: NamedFolder; className?: string 
           <span aria-hidden="true">·</span>
         </>
       )}
-      <span className="shrink-0 tabular-nums">{f.count === 0 ? t('folder.empty') : plural(f.count)}</span>
+      <span className="shrink-0 tabular-nums">{f.count === 0 && f.childCount === 0 ? t('folder.empty') : f.count === 0 ? tn('tree.subfolders', f.childCount) : <>{plural(f.count)}{f.childCount > 0 && <> · {tn('tree.subfolders', f.childCount)}</>}</>}</span>
       {f.visibility !== 'private' && (
         <>
           <span aria-hidden="true">·</span>
@@ -116,7 +116,7 @@ function FolderMeta({ f, className = '' }: { f: NamedFolder; className?: string 
 const openLabel = (f: NamedFolder) =>
   t('folder.openLabel', {
     title: f.title ?? f.name,
-    count: f.count === 0 ? t('folder.emptyLower') : plural(f.count),
+    count: f.count === 0 && f.childCount === 0 ? t('folder.emptyLower') : [f.count > 0 ? plural(f.count) : '', f.childCount > 0 ? tn('tree.subfolders', f.childCount) : ''].filter(Boolean).join(', '),
     shared: f.visibility !== 'private' ? t('folder.sharedPart', { visibility: visibilityLabel(f.visibility).toLowerCase() }) : '',
   });
 

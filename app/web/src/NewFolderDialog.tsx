@@ -8,8 +8,8 @@ import type { FolderDetail } from './types.ts';
 const field = 'w-full rounded-lg border border-line bg-transparent px-3 py-2 text-sm hover:border-line-strong';
 
 /** Explicit creation of an empty folder: private by default, shareable later from its panel. */
-export function NewFolderDialog({ existing, onClose, onCreated }: {
-  existing: string[]; onClose: () => void; onCreated: (folder: FolderDetail) => void | Promise<void>;
+export function NewFolderDialog({ existing, parent, parentTitle, onClose, onCreated }: {
+  existing: string[]; parent: string | null; parentTitle?: string; onClose: () => void; onCreated: (folder: FolderDetail) => void | Promise<void>;
 }) {
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
@@ -21,7 +21,7 @@ export function NewFolderDialog({ existing, onClose, onCreated }: {
   const slug = normalizeLabel(name);
   const typed = name.trim() !== '';
   const taken = !!slug && existing.includes(slug);
-  const hint = !typed ? t('newFolder.hintEmpty') : !slug ? t('common.charset') : taken ? t('newFolder.taken') : t('newFolder.private');
+  const hint = !typed ? t('newFolder.hintEmpty') : !slug ? t('common.charset') : taken ? t('newFolder.taken') : parent ? t('newFolder.inside', { title: parentTitle ?? parent }) : t('newFolder.private');
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -29,7 +29,7 @@ export function NewFolderDialog({ existing, onClose, onCreated }: {
     setBusy(true);
     setError(null);
     try {
-      const folder = await api.createFolder({ name: slug, ...(title.trim() && { title: title.trim() }), ...(description.trim() && { description: description.trim() }) });
+      const folder = await api.createFolder({ name: slug, ...(parent && { parent }), ...(title.trim() && { title: title.trim() }), ...(description.trim() && { description: description.trim() }) });
       await onCreated(folder);
     } catch (err) {
       setError((err as Error).message);

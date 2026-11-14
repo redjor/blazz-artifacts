@@ -5,14 +5,14 @@ import { CloseIcon } from './icons.tsx';
 
 const field = 'w-full rounded-lg border border-line bg-transparent px-3 py-2 text-sm hover:border-line-strong';
 
-export function ProjectInput({ value, onChange, projects }: { value: string; onChange: (v: string) => void; projects: string[] }) {
+export function ProjectInput({ value, onChange, projects, paths }: { value: string; onChange: (v: string) => void; projects: string[]; paths?: Record<string, string> }) {
   const listId = useId();
   const invalid = value.trim() !== '' && normalizeLabel(value) === null;
   return (
     <label className="block space-y-1 text-sm">
       <span className="text-muted">{t('labels.folder')}</span>
       <input list={listId} value={value} maxLength={64} onChange={(e) => onChange(e.target.value)} placeholder={t('common.namePlaceholder')} autoComplete="off" className={field} />
-      <datalist id={listId}>{projects.map((p) => <option key={p} value={p} />)}</datalist>
+      <datalist id={listId}>{projects.map((p) => <option key={p} value={p} label={paths?.[p] ?? p} />)}</datalist>
       {invalid && <span className="text-xs text-danger">{t('labels.invalid')}</span>}
     </label>
   );

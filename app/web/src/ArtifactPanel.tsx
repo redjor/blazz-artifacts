@@ -183,8 +183,8 @@ export interface LinkActions {
  * Side panel of an artifact (full screen on mobile): header with actions, three tabs, ↑/↓ navigation
  * in the gallery's current order. Each tab keeps its draft: saving one does not clear the other.
  */
-export function ArtifactDrawer({ id, summary, order, projects, tagNames, links, dirtyRef, onNavigate, onClose, onChanged, onNotice, restoreFocus }: {
-  id: string; summary: ArtifactDto | undefined; order: string[]; projects: string[]; tagNames: string[]; links: LinkActions;
+export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, links, dirtyRef, onNavigate, onClose, onChanged, onNotice, restoreFocus }: {
+  id: string; summary: ArtifactDto | undefined; order: string[]; projects: string[]; paths?: Record<string, string>; tagNames: string[]; links: LinkActions;
   /** Read by the gallery to confirm before a hash navigation. */
   dirtyRef: RefObject<boolean>;
   onNavigate: (id: string) => void; onClose: () => void; onChanged: () => unknown; onNotice: (m: string) => void;
@@ -496,7 +496,7 @@ export function ArtifactDrawer({ id, summary, order, projects, tagNames, links, 
                     <span id={`${baseId}-slug-warn`} className="block text-xs text-warn">{t('info.slugWarn', { slug: view.slug })}</span>
                   )}
                 </label>
-                <ProjectInput value={infoValues.project} onChange={(project) => setInfo({ ...infoValues, project })} projects={projects} />
+                <ProjectInput value={infoValues.project} onChange={(project) => setInfo({ ...infoValues, project })} projects={projects} paths={paths} />
                 <TagsInput value={infoValues.tags} onChange={(tags) => setInfo({ ...infoValues, tags })} suggestions={tagNames} />
                 <div className="flex flex-wrap gap-2">
                   <button className={primary} disabled={!infoDirty || projectInvalid || pending === 'info'}>{pending === 'info' ? t('common.saving') : t('common.save')}</button>

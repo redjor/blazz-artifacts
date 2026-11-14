@@ -206,6 +206,11 @@ export const en = {
   'card.pinned': 'Pinned',
 
   // Folder cards
+  'tree.root': 'All',
+  'tree.breadcrumb': 'Folder path',
+  'tree.subfolders.one': '{n} folder',
+  'tree.subfolders.other': '{n} folders',
+  'newFolder.inside': 'Created inside “{title}”.',
   'folder.count.one': '{n} artifact',
   'folder.count.other': '{n} artifacts',
   'folder.actions': 'Actions for folder “{title}”',

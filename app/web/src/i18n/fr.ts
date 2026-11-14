@@ -207,6 +207,11 @@ export const fr: Messages = {
   'card.pinned': 'Épinglé',
 
   // Cartes de dossier
+  'tree.root': 'Tout',
+  'tree.breadcrumb': 'Chemin du dossier',
+  'tree.subfolders.one': '{n} dossier',
+  'tree.subfolders.other': '{n} dossiers',
+  'newFolder.inside': 'Créé dans « {title} ».',
   'folder.count.one': '{n} artéfact',
   'folder.count.other': '{n} artéfacts',
   'folder.actions': 'Actions pour le dossier « {title} »',

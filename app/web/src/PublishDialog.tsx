@@ -9,8 +9,8 @@ import { VisibilityPicker } from './VisibilityPicker.tsx';
 
 type SlugState = 'checking' | 'ok' | 'taken' | 'invalid';
 
-export function PublishDialog({ file, defaultProject, projects, tags: knownTags, onClose, onPublished }: {
-  file: File; defaultProject: string; projects: string[]; tags: string[]; onClose: () => void; onPublished: () => void;
+export function PublishDialog({ file, defaultProject, projects, paths, tags: knownTags, onClose, onPublished }: {
+  file: File; defaultProject: string; projects: string[]; paths?: Record<string, string>; tags: string[]; onClose: () => void; onPublished: () => void;
 }) {
   const [project, setProject] = useState(defaultProject);
   const [tags, setTags] = useState<string[]>([]);
@@ -91,7 +91,7 @@ export function PublishDialog({ file, defaultProject, projects, tags: knownTags,
             className="w-full rounded-lg border border-line bg-transparent px-3 py-2 font-mono hover:border-line-strong" />
           <span className={`text-xs ${slugState === 'ok' ? 'text-ok' : slugState === 'checking' ? 'text-muted' : 'text-danger'}`}>{slugHint}</span>
         </label>
-        <ProjectInput value={project} onChange={setProject} projects={projects} />
+        <ProjectInput value={project} onChange={setProject} projects={projects} paths={paths} />
         <TagsInput value={tags} onChange={setTags} suggestions={knownTags} />
         <VisibilityPicker value={visibility} onChange={setVisibility} />
         {visibility === 'code' && (
