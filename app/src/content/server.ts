@@ -19,7 +19,7 @@ import { thumbPath, versionDir } from '../storage.ts';
 import { THUMB_MIME } from '../thumbs.ts';
 import { createVisitRecorder, isBot } from '../visits.ts';
 import { checkFolderPreview, checkFolderThumb, decodeFolderGrant, encodeFolderGrant, effectiveFolderAccess, folderCookieName, signFolderThumb } from './folder-grant.ts';
-import { ancestors } from '../folder-tree.ts';
+import { ancestors, children } from '../folder-tree.ts';
 import { renderFolderPage } from './folder-page.ts';
 import { decodeGrant, encodeGrant, GRANT_TTL_S, grantCookieName, isGrantValid } from './grant.ts';
 import { PDF_CSP, SANDBOX_SCRIPTS, SANDBOX_STATIC } from './headers.ts';
@@ -249,8 +249,20 @@ export function createContentApp(deps: ContentDeps): Hono {
         : `/d/${p.name}/a/${encodePath(a.slug)}`;
       return [{ href, title: a.title, kind: v.kind ?? a.kind, updatedAt: a.updated_at, versionNumber: v.number, thumbUrl }];
     });
+    const folders = children(db, p.name).map((ch) => ({
+      href: preview ? null : `/d/${ch.name}`,
+      title: ch.title?.trim() || ch.name,
+      description: ch.description,
+      count: listFolderArtifacts(db, ch.name).length,
+      childCount: children(db, ch.name).length,
+      updatedAt: ch.updated_at,
+    }));
+    // Ancestors from the granting folder down to the parent; nothing above it (design 03: no leak).
+    const chain = chainOf(p);
+    const top = granting ? chain.findIndex((x) => x.name === granting.name) : 0;
+    const breadcrumb = preview ? [] : chain.slice(1, top + 1).reverse().map((a) => ({ href: `/d/${a.name}`, title: a.title?.trim() || a.name }));
     return renderFolderPage({
-      name: p.name, title: p.title, description: p.description, cards, nowMs: nowMs(),
+      name: p.name, title: p.title, description: p.description, cards, nowMs: nowMs(), folders, breadcrumb,
       preview: preview ? { visibility: p.visibility } : null,
     }, locale);
   }

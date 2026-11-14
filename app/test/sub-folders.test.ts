@@ -97,3 +97,32 @@ test('sub-folder thumbnails: signed by the granting ancestor, refused after a mo
   setParent(h.db, 'lot', null);
   assert.equal((await get(h, url)).status, 404, 'no longer under the granting folder');
 });
+
+test('folder page lists direct sub-folders before artifacts', async () => {
+  const h = await tree();
+  upsertProject(h.db, 'lot', { title: 'Lot <3>', description: 'Livraison' });
+  upsertProject(h.db, 'vide', {});
+  setParent(h.db, 'vide', 'client');
+  const html = await (await get(h, '/d/client', grant(h, 'client'))).text();
+  assert.match(html, /href="\/d\/lot"/);
+  assert.match(html, /Lot &lt;3&gt;/);
+  assert.match(html, /href="\/d\/vide"/);
+  assert.ok(!html.includes('href="/d/detail"'), 'grandchild not listed on the root page');
+  assert.ok(html.indexOf('href="/d/lot"') < html.indexOf('href="/d/client/a/art-client"'), 'folders first');
+  assert.doesNotMatch(html, /<script/i);
+});
+
+test('breadcrumb starts at the highest accessible ancestor', async () => {
+  const h = await tree();
+  const full = await (await get(h, '/d/detail', grant(h, 'client'))).text();
+  assert.match(full, /<nav class="crumbs"[^>]*>.*href="\/d\/client".*href="\/d\/lot"/s);
+  upsertProject(h.db, 'lot', { visibility: 'code', code_hash: await hashSecret('lot-code') });
+  const partial = await (await get(h, '/d/detail', grant(h, 'lot'))).text();
+  assert.match(partial, /href="\/d\/lot"/);
+  assert.ok(!partial.includes('/d/client') && !partial.includes('Client Acme'), 'inaccessible ancestor hidden');
+  const own = await (async () => {
+    upsertProject(h.db, 'detail', { visibility: 'public' });
+    return (await get(h, '/d/detail')).text();
+  })();
+  assert.doesNotMatch(own, /class="crumbs"/, 'no breadcrumb without accessible ancestor');
+});

@@ -74,7 +74,7 @@ test('visitor pages: <html lang> and copy follow the locale', () => {
 
 test('folder page: English by default, French copy and typography only in fr', () => {
   const card = { href: '/d/x/a/y', title: 'Plan : v2', kind: 'markdown' as const, updatedAt: new Date(0).toISOString(), versionNumber: 2, thumbUrl: null };
-  const input = { name: 'x', title: 'Client : Acme', description: null, cards: [card], nowMs: 0 };
+  const input = { name: 'x', title: 'Client : Acme', description: null, cards: [card], nowMs: 0, folders: [], breadcrumb: [] };
   const en = renderFolderPage(input, 'en');
   assert.match(en, /<html lang="en">/);
   assert.match(en, /1 artifact</);

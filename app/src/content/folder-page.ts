@@ -12,8 +12,12 @@ export interface FolderCard {
   thumbUrl: string | null;
 }
 
+/** Direct sub-folder card (design 03). `href: null` in the admin preview (other folders are not previewable from here). */
+export interface FolderSubCard { href: string | null; title: string; description: string | null; count: number; childCount: number; updatedAt: string }
+
 export interface FolderPageInput {
   name: string; title: string | null; description: string | null; cards: FolderCard[]; nowMs: number;
+  folders: FolderSubCard[]; breadcrumb: { href: string; title: string }[];
   /** Admin preview: notice banner and the folder's real visibility. */
   preview?: { visibility: Visibility } | null;
 }
@@ -30,6 +34,8 @@ const svg = (paths: string, size: number, cls = '') =>
   `<svg${cls ? ` class="${cls}"` : ''} width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${paths}</svg>`;
 const MOON = '<path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z"/>';
 const SUN = '<circle cx="12" cy="12" r="3.75"/><path d="M12 3v1.5M12 19.5V21M3 12h1.5M19.5 12H21M5.6 5.6l1.1 1.1M17.3 17.3l1.1 1.1M5.6 18.4l1.1-1.1M17.3 6.7l1.1-1.1"/>';
+
+const FOLDER = '<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>';
 
 // Bands and pictograms per kind, same tints as the admin UI cards.
 const KIND_LIGHT = `--markdown-band:#e2e8f6;--markdown-glyph:#2546a3;--html-band:#f2e3d8;--html-glyph:#974018;--site-band:#e7e2f6;--site-glyph:#4b34b4;
@@ -76,6 +82,7 @@ background:var(--band);box-shadow:0 1px 2px var(--shadow);transition:box-shadow 
 .frame::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px oklch(0.5 0.02 60 / 0.14);pointer-events:none}
 .glyph{width:30%;height:auto;max-width:76px}
 ${(['markdown', 'html', 'site', 'pdf', 'json'] as Kind[]).map((k) => `.k-${k}{background:var(--${k}-band);color:var(--${k}-glyph)}`).join('\n')}
+.k-folder{background:var(--band);color:var(--muted)}
 @media (hover:hover){
 .card:hover .frame{box-shadow:0 14px 32px -14px var(--shadow),0 2px 6px -2px var(--shadow)}
 .card:hover .name{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px;text-decoration-color:var(--muted)}
@@ -84,6 +91,11 @@ ${(['markdown', 'html', 'site', 'pdf', 'json'] as Kind[]).map((k) => `.k-${k}{ba
 .name{display:block;margin:16px 0 0;font:400 21px/1.3 ${SERIF};color:var(--fg);text-wrap:balance;overflow-wrap:anywhere}
 .meta{display:flex;flex-wrap:wrap;gap:4px 8px;margin:6px 0 0;color:var(--muted);font-size:14px;line-height:1.4}
 .meta span+span::before{content:"·";margin-right:8px}
+.crumbs{display:flex;flex-wrap:wrap;gap:6px;font-size:14px;margin:0 0 12px;color:var(--muted)}
+.crumbs a{color:inherit}
+.crumbs [aria-current]{color:var(--fg)}
+.grid.folders{margin-bottom:44px}
+.sub{display:block;font-size:14px;color:var(--muted)}
 .num{font-variant-numeric:tabular-nums}
 .preview{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin:12px 0 0;padding:12px 16px;border-radius:12px;background:var(--band);color:var(--soft);font-size:14px;line-height:1.45}
 .preview strong{color:var(--fg);font-weight:600}
@@ -118,14 +130,36 @@ function card(c: FolderCard, nowMs: number, locale: Locale): string {
 </a></li>`;
 }
 
+function folderCard(f: FolderSubCard, nowMs: number, locale: Locale): string {
+  const counts = f.count + f.childCount === 0
+    ? tr(locale, 'folder.emptyChild')
+    : [f.childCount ? tr(locale, 'folder.subCount', { n: f.childCount }) : '', f.count ? tr(locale, 'folder.count', { n: f.count }) : '']
+        .filter(Boolean).join(' · ');
+  const desc = f.description?.trim() ? `<span class="sub">${typography(locale, escapeHtml(f.description.trim()))}</span>` : '';
+  const inner = `<span class="frame k-folder">${svg(FOLDER, 64, 'glyph')}</span>
+<span class="name">${typography(locale, escapeHtml(f.title))}</span>${desc}
+<span class="meta"><span>${counts}</span><span><time datetime="${escapeHtml(f.updatedAt)}">${folderRelativeDate(f.updatedAt, nowMs, locale)}</time></span></span>`;
+  return f.href
+    ? `<li><a class="card" href="${escapeHtml(f.href)}">${inner}</a></li>`
+    : `<li><span class="card">${inner}</span></li>`;
+}
+
+function crumbs(items: { href: string; title: string }[], current: string, locale: Locale): string {
+  if (items.length === 0) return '';
+  const links = items.map((i) => `<a href="${escapeHtml(i.href)}">${escapeHtml(i.title)}</a>`).join('<span aria-hidden="true">/</span>');
+  return `<nav class="crumbs" aria-label="${tr(locale, 'folder.breadcrumb')}">${links}<span aria-hidden="true">/</span><span aria-current="page">${escapeHtml(current)}</span></nav>`;
+}
+
 export function renderFolderPage(o: FolderPageInput, locale: Locale = 'en'): string {
   const title = o.title?.trim() || o.name;
   const n = o.cards.length;
   const count = n === 0 ? '' : `<p class="count">${tr(locale, 'folder.count', { n })}</p>`;
   const desc = o.description?.trim() ? `<p class="desc">${typography(locale, escapeHtml(o.description.trim()))}</p>` : '';
-  const body = n === 0
-    ? `<p class="empty">${tr(locale, 'folder.empty')}</p>`
-    : `<ul class="grid" role="list">${o.cards.map((c) => card(c, o.nowMs, locale)).join('\n')}</ul>`;
+  const folders = o.folders.length
+    ? `<section aria-label="${tr(locale, 'folder.folders')}"><ul class="grid folders" role="list">${o.folders.map((f) => folderCard(f, o.nowMs, locale)).join('\n')}</ul></section>`
+    : '';
+  const arts = n ? `<ul class="grid" role="list">${o.cards.map((c) => card(c, o.nowMs, locale)).join('\n')}</ul>` : '';
+  const body = n === 0 && o.folders.length === 0 ? `<p class="empty">${tr(locale, 'folder.empty')}</p>` : folders + arts;
   const preview = o.preview
     ? `<p class="preview" role="note"><strong>${tr(locale, 'folder.previewTitle')}</strong><span>${tr(locale, 'folder.previewBody', { visibility: tr(locale, `visibility.${o.preview.visibility}`) })}</span></p>`
     : '';
@@ -143,7 +177,7 @@ export function renderFolderPage(o: FolderPageInput, locale: Locale = 'en'): str
 <div class="page">
 ${preview}
 <nav class="toolbar"><label for="theme-toggle" class="theme-btn" aria-hidden="true"><span class="to-dark">${svg(MOON, 16)}${tr(locale, 'theme.dark')}</span><span class="to-light">${svg(SUN, 16)}${tr(locale, 'theme.light')}</span></label></nav>
-<header class="head"><h1 class="title">${typography(locale, escapeHtml(title))}</h1>${desc}${count}</header>
+<header class="head">${crumbs(o.breadcrumb, title, locale)}<h1 class="title">${typography(locale, escapeHtml(title))}</h1>${desc}${count}</header>
 <main>${body}</main>
 </div>
 </body>
