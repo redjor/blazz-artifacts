@@ -91,7 +91,7 @@ ${(['markdown', 'html', 'site', 'pdf', 'json'] as Kind[]).map((k) => `.k-${k}{ba
 .name{display:block;margin:16px 0 0;font:400 21px/1.3 ${SERIF};color:var(--fg);text-wrap:balance;overflow-wrap:anywhere}
 .meta{display:flex;flex-wrap:wrap;gap:4px 8px;margin:6px 0 0;color:var(--muted);font-size:14px;line-height:1.4}
 .meta span+span::before{content:"·";margin-right:8px}
-.crumbs{display:flex;flex-wrap:wrap;gap:6px;font-size:14px;margin:0 0 12px;color:var(--muted)}
+.crumbs{display:flex;flex-wrap:wrap;overflow-wrap:anywhere;gap:6px;font-size:14px;margin:0 0 12px;color:var(--muted)}
 .crumbs a{color:inherit}
 .crumbs [aria-current]{color:var(--fg)}
 .grid.folders{margin-bottom:44px}
@@ -133,7 +133,7 @@ function card(c: FolderCard, nowMs: number, locale: Locale): string {
 function folderCard(f: FolderSubCard, nowMs: number, locale: Locale): string {
   const counts = f.count + f.childCount === 0
     ? tr(locale, 'folder.emptyChild')
-    : [f.childCount ? tr(locale, 'folder.subCount', { n: f.childCount }) : '', f.count ? tr(locale, 'folder.count', { n: f.count }) : '']
+    : [f.count ? tr(locale, 'folder.count', { n: f.count }) : '', f.childCount ? tr(locale, 'folder.subCount', { n: f.childCount }) : '']
         .filter(Boolean).join(' · ');
   const desc = f.description?.trim() ? `<span class="sub">${typography(locale, escapeHtml(f.description.trim()))}</span>` : '';
   const inner = `<span class="frame k-folder">${svg(FOLDER, 64, 'glyph')}</span>
