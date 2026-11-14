@@ -7,6 +7,8 @@ import { signPath, signPinnedPath } from '../content/signing.ts';
 import { decrypt, encrypt, hashSecret, randomToken, sha256, type Keys } from '../crypto.ts';
 import type { Db } from '../db.ts';
 import { HttpError } from '../http.ts';
+import type { ErrorCode } from '../errors.ts';
+import { ancestors, canReparent, children, setChildrenOrder, setParent } from '../folder-tree.ts';
 import { staticLocale } from '../i18n.ts';
 import { newId } from '../ids.ts';
 import { ingestFile, stripExtension, type UploadedFile } from '../ingest/ingest.ts';
@@ -447,6 +449,18 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     if (!isFolderName(name) || !projectExists(db, name)) throw new HttpError(404, 'folder_not_found');
     return name;
   };
+  /** `parent` field: undefined (absent), null (root) or a valid folder name. */
+  const parseParent = (v: unknown): string | null | undefined => {
+    if (v === undefined || v === null) return v;
+    if (typeof v !== 'string' || !isFolderName(v)) throw new HttpError(400, 'invalid_parent');
+    return v;
+  };
+  /** Moves `name` under `parent` after the tree checks. Call inside tx. */
+  const reparent = (name: string, parent: string | null) => {
+    const check = canReparent(db, name, parent);
+    if (check !== 'ok') throw new HttpError(400, `parent_${check}` as ErrorCode);
+    setParent(db, name, parent);
+  };
   const folderSheet = (name: string): Project =>
     getProject(db, name) ?? { name, title: null, description: null, visibility: 'private', code_hash: null, access_epoch: 1, created_at: '', updated_at: '', salt: '', parent_name: null, position: null };
 
@@ -476,6 +490,9 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
         };
       }),
       links: listFolderLinks(db, name).map(linkDto),
+      parent: p.parent_name ?? null,
+      ancestors: ancestors(db, name).reverse().map((a) => ({ name: a.name, title: a.title })),
+      children: children(db, name).map((ch) => ({ name: ch.name, title: ch.title, visibility: ch.visibility, count: listFolderArtifacts(db, ch.name).length })),
     };
   };
 
@@ -490,6 +507,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
       const latest = [sheet?.updated_at, recent[0]?.updated_at].filter((x): x is string => !!x).sort().at(-1) ?? null;
       return {
         ...f, latestUpdatedAt: latest,
+        childCount: f.name === null ? 0 : children(db, f.name).length,
         recent: recent.map((a) => {
           const v = a.current_version_id ? getVersion(db, a.current_version_id) : undefined;
           return { id: a.id, kind: a.kind, thumbnailUrl: v?.thumb_type ? `/api/artifacts/${enc(a.id)}/thumbnail?v=${thumbStamp(v)}` : null };
@@ -507,9 +525,11 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     const patch: ProjectPatch = {};
     if (body.title !== undefined) patch.title = parseOptionalText(body.title, 120, 'title');
     if (body.description !== undefined) patch.description = parseOptionalText(body.description, 1000, 'description');
+    const parent = parseParent(body.parent);
     tx(db, () => {
       if (projectExists(db, name)) throw new HttpError(409, 'folder_exists');
       upsertProject(db, name, patch);
+      if (parent) reparent(name, parent);
     });
     return c.json(folderDto(name), 201);
   });
@@ -530,6 +550,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     mustFolder(name); // fiche ou au moins un artifact, comme les autres routes
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     const current = folderSheet(name);
+    const parent = parseParent(body.parent);
     const patch: ProjectPatch = {};
     let bump = false;
     if (body.title !== undefined) patch.title = parseOptionalText(body.title, 120, 'title');
@@ -559,6 +580,8 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
       // Renaming alone does not create a sheet; any other field creates one on the fly.
       const onlyRename = Object.keys(body).every((k) => k === 'name');
       if (!onlyRename || getProject(db, target)) upsertProject(db, target, patch, bump);
+      // Skip a no-op reparent: setParent resets the sibling position.
+      if (parent !== undefined && parent !== (getProject(db, target)?.parent_name ?? null)) reparent(target, parent);
     });
     return c.json(folderDto(target));
   });
@@ -620,11 +643,21 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     return c.json({ ...stats, links });
   });
 
-  // Deletes the sheet (folder links and statistics included); artifacts stay in their project.
+  api.put('/projects/:name/children-order', async (c) => {
+    const name = mustFolder(c.req.param('name'));
+    const body = (await c.req.json().catch(() => ({}))) as { names?: unknown };
+    if (!Array.isArray(body.names) || body.names.some((n) => typeof n !== 'string')) throw new HttpError(400, 'invalid_names');
+    if (!setChildrenOrder(db, name, body.names as string[])) throw new HttpError(409, 'folder_changed');
+    return c.json(folderDto(name));
+  });
+
+  // Deletes the sheet (folder links and statistics included); artifacts stay in their project; direct sub-folders move up.
   api.delete('/projects/:name', (c) => {
     const name = c.req.param('name');
-    if (!isFolderName(name) || !deleteProject(db, name)) throw new HttpError(404, 'folder_not_found');
-    return c.json({ ok: true });
+    if (!isFolderName(name)) throw new HttpError(404, 'folder_not_found');
+    const movedChildren = children(db, name).length;
+    if (!deleteProject(db, name)) throw new HttpError(404, 'folder_not_found');
+    return c.json({ ok: true, movedChildren });
   });
 
   api.get('/slugs/:slug', (c) => {

@@ -358,7 +358,7 @@ test('POST /api/projects : crée un dossier vide et privé (nom normalisé, sel 
   const list = (await h.call('GET', '/projects')).body as { name: string; count: number }[];
   assert.deepEqual(list.find((f) => f.name === 'ete-2026-client'), {
     name: 'ete-2026-client', count: 0, privateCount: 0, visibility: 'private', title: 'Maquettes', parent: null, position: null,
-    latestUpdatedAt: getProject(h.db, 'ete-2026-client')!.updated_at, recent: [], url: 'https://artifacts.test/d/ete-2026-client', activeLinkUrl: null,
+    latestUpdatedAt: getProject(h.db, 'ete-2026-client')!.updated_at, recent: [], url: 'https://artifacts.test/d/ete-2026-client', activeLinkUrl: null, childCount: 0,
   });
 });
 
@@ -396,4 +396,50 @@ test('PATCH artifact project : déplacer vers un dossier vide existant garde la 
   const folder = (await h.call('GET', '/projects/vide')).body;
   assert.equal(folder.count, 1);
   assert.deepEqual(folder.artifacts.map((a: { slug: string }) => a.slug), ['privee']);
+});
+
+test('sub-folders API: create under a parent, move, refuse cycles and depth', async () => {
+  const h = await adminSetup();
+  assert.equal((await h.call('POST', '/projects', { name: 'lot', parent: 'client' })).status, 201);
+  let r = await h.call('GET', '/projects/client');
+  assert.deepEqual(r.body.children.map((c: { name: string }) => c.name), ['lot']);
+  r = await h.call('GET', '/projects/lot');
+  assert.equal(r.body.parent, 'client');
+  assert.deepEqual(r.body.ancestors, [{ name: 'client', title: null }]);
+  const list = (await h.call('GET', '/projects')).body as { name: string; parent: string | null; childCount: number }[];
+  assert.equal(list.find((f) => f.name === 'lot')!.parent, 'client');
+  assert.equal(list.find((f) => f.name === 'client')!.childCount, 1);
+
+  assert.equal((await h.call('PATCH', '/projects/client', { parent: 'lot' })).body.code, 'parent_cycle');
+  assert.equal((await h.call('PATCH', '/projects/client', { parent: 'client' })).body.code, 'parent_self');
+  assert.equal((await h.call('PATCH', '/projects/client', { parent: 'nope' })).body.code, 'parent_missing');
+  assert.equal((await h.call('PATCH', '/projects/client', { parent: 'Not Valid!' })).status, 400);
+  for (const [n, p] of [['l3', 'lot'], ['l4', 'l3']]) assert.equal((await h.call('POST', '/projects', { name: n, parent: p })).status, 201);
+  const deep = await h.call('POST', '/projects', { name: 'l5', parent: 'l4' });
+  assert.equal(deep.status, 400);
+  assert.equal(deep.body.code, 'parent_depth');
+  assert.equal(getProject(h.db, 'l5'), undefined, 'nothing created on error');
+
+  r = await h.call('PATCH', '/projects/lot', { parent: null });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.parent, null);
+});
+
+test('sub-folders API: delete moves children up, children order', async () => {
+  const h = await adminSetup();
+  await h.call('POST', '/projects', { name: 'lot', parent: 'client' });
+  await h.call('POST', '/projects', { name: 'a1', parent: 'lot' });
+  await h.call('POST', '/projects', { name: 'a2', parent: 'lot' });
+  const order = await h.call('PUT', '/projects/lot/children-order', { names: ['a2', 'a1'] });
+  assert.deepEqual(order.body.children.map((c: { name: string }) => c.name), ['a2', 'a1']);
+  assert.equal((await h.call('PUT', '/projects/lot/children-order', { names: ['a1'] })).status, 409);
+  assert.equal((await h.call('PUT', '/projects/lot/children-order', { names: 'a1' })).status, 400);
+  // A PATCH repeating the current parent must not reset the sibling position.
+  const same = await h.call('PATCH', '/projects/a2', { parent: 'lot', title: 'A2' });
+  assert.equal(same.status, 200);
+  const after = await h.call('GET', '/projects/lot');
+  assert.deepEqual(after.body.children.map((c: { name: string }) => c.name), ['a2', 'a1']);
+  const del = await h.call('DELETE', '/projects/lot');
+  assert.deepEqual(del.body, { ok: true, movedChildren: 2 });
+  assert.equal(getProject(h.db, 'a1')!.parent_name, 'client');
 });
