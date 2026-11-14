@@ -223,21 +223,25 @@ export function createContentApp(deps: ContentDeps): Hono {
     if (previewSig !== undefined) {
       const sheet = folderOf(name);
       if (!sheet || !checkFolderPreview(keys.folderPreview, sheet, previewSig, nowS())) return notFound(c);
-      return c.html(renderFolder(sheet, previewSig, loc(c)));
+      return c.html(renderFolder(sheet, previewSig, loc(c), null));
     }
     const project = folderOf(name);
-    if (!folderAccess(c, project)) return denyFolder(c, project);
+    const granting = folderAccess(c, project);
+    if (!granting) return denyFolder(c, project);
     if (isHumanNavigation(c)) visits.folderView(project!.name, clientIp(c), c.req.header('user-agent') ?? '', nowMs());
-    return c.html(renderFolder(project!, null, loc(c)));
+    return c.html(renderFolder(project!, null, loc(c), granting));
   };
 
   /** `preview`: admin preview signature (cards to signed paths, thumbnails allowed by this signature). */
-  function renderFolder(p: Project, preview: string | null, locale: Locale): string {
+  function renderFolder(p: Project, preview: string | null, locale: Locale, granting: Project | null): string {
     const now = nowS();
     const cards = listFolderArtifacts(db, p.name).flatMap((a) => {
       const v = a.current_version_id ? getVersion(db, a.current_version_id) : undefined;
       if (!v) return [];
-      const thumbQuery = preview ? `p=${preview}` : `s=${signFolderThumb(keys.folderThumb, p, a.id, v.id, now)}`;
+      const g = granting ?? p;
+      const thumbQuery = preview
+        ? `p=${preview}`
+        : `${g.name === p.name ? '' : `g=${g.name}&`}s=${signFolderThumb(keys.folderThumb, g, p.name, a.id, v.id, now)}`;
       const thumbUrl = v.thumb_type ? `/d/${p.name}/thumb/${a.id}/${v.id}?${thumbQuery}` : null;
       // Preview: direct signed path (like an artifact admin preview); otherwise entry through the folder, which re-checks everything.
       const href = preview
@@ -274,10 +278,12 @@ export function createContentApp(deps: ContentDeps): Hono {
     if (!project) return notFound(c);
     const artifactId = c.req.param('artifactId');
     const versionId = c.req.param('versionId');
+    const g = c.req.query('g');
+    const granting = g === undefined ? project : chainOf(project).find((x) => x.name === g);
     const allowed =
       checkFolderPreview(keys.folderPreview, project, c.req.query('p'), nowS()) ||
-      checkFolderThumb(keys.folderThumb, project, artifactId, versionId, c.req.query('s'), nowS()) ||
-      folderAccess(c, project);
+      (!!granting && checkFolderThumb(keys.folderThumb, granting, project.name, artifactId, versionId, c.req.query('s'), nowS())) ||
+      !!folderAccess(c, project);
     if (!allowed) return notFound(c);
     const art = getArtifact(db, artifactId);
     if (!art || art.project !== project.name || art.current_version_id !== versionId) return notFound(c);

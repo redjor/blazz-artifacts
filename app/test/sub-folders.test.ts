@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { encodeFolderGrant, folderCookieName } from '../src/content/folder-grant.ts';
 import { hashSecret } from '../src/crypto.ts';
 import { setParent } from '../src/folder-tree.ts';
-import { bumpProjectEpoch, getProject, upsertProject } from '../src/repo.ts';
+import { bumpProjectEpoch, getArtifactBySlug, getProject, setVersionThumb, upsertProject } from '../src/repo.ts';
+import { thumbPath, thumbsDir } from '../src/storage.ts';
 import { seedArtifact, setup, type Harness } from './harness.ts';
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
@@ -74,4 +76,24 @@ test('unlock page of a sub-folder never mentions its parent', async () => {
   assert.equal(res.status, 401);
   const html = await res.text();
   assert.ok(!html.includes('client') && !html.includes('Client Acme'));
+});
+
+const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
+
+test('sub-folder thumbnails: signed by the granting ancestor, refused after a move', async () => {
+  const h = await tree();
+  const art = getArtifactBySlug(h.db, 'art-detail')!;
+  const v = art.current_version_id!;
+  await mkdir(thumbsDir(h.cfg.dataDir, art.id), { recursive: true });
+  await writeFile(thumbPath(h.cfg.dataDir, art.id, v, 'png'), PNG);
+  setVersionThumb(h.db, art.id, v, { thumb_type: 'png', thumb_at: new Date(h.clock.now()).toISOString() });
+  const html = await (await get(h, '/d/detail', grant(h, 'client'))).text();
+  const m = /src="(\/d\/detail\/thumb\/[^"]+)"/.exec(html);
+  assert.ok(m, 'thumbnail URL on the page');
+  const url = m[1].replaceAll('&amp;', '&');
+  assert.match(url, /[?&]g=client&s=/);
+  assert.equal((await get(h, url)).status, 200, 'signed URL works without cookie');
+  assert.equal((await get(h, url.replace('g=client', 'g=lot'))).status, 404, 'wrong granting folder');
+  setParent(h.db, 'lot', null);
+  assert.equal((await get(h, url)).status, 404, 'no longer under the granting folder');
 });

@@ -63,24 +63,26 @@ export function effectiveFolderAccess(
   return null;
 }
 
-// Thumbnail URL issued by the folder page (the sandboxed document has an opaque origin: its image requests
-// carry no SameSite cookies). Bound to the folder epoch and expires in 1 h, like an artifact signed path;
-// current membership and non-private visibility are re-checked on every request.
+// Thumbnail URL issued by the folder page (the sandboxed document has an opaque origin: its image requests carry no
+// SameSite cookies). Bound to the granting folder (the page's folder or the ancestor that opened it, design 03), its
+// epoch and the displayed folder; expires in 1 h. Membership, descent and visibility are re-checked on every request.
 export const FOLDER_THUMB_TTL_S = 3600;
-const thumbPayload = (p: Pick<Project, 'name' | 'salt' | 'access_epoch'>, artifactId: string, versionId: string, exp: number) =>
-  `thumb|${p.name}|${p.salt}|${p.access_epoch}|${artifactId}|${versionId}|${exp}`;
+const thumbPayload = (g: Pick<Project, 'name' | 'salt' | 'access_epoch'>, folder: string, artifactId: string, versionId: string, exp: number) =>
+  `thumb|${g.name}|${g.salt}|${g.access_epoch}|${folder}|${artifactId}|${versionId}|${exp}`;
 
-export function signFolderThumb(key: Buffer, project: Project, artifactId: string, versionId: string, nowS: number): string {
+export function signFolderThumb(key: Buffer, granting: Project, folder: string, artifactId: string, versionId: string, nowS: number): string {
   const exp = nowS + FOLDER_THUMB_TTL_S;
-  return `${exp}.${hmac(key, thumbPayload(project, artifactId, versionId, exp))}`;
+  return `${exp}.${hmac(key, thumbPayload(granting, folder, artifactId, versionId, exp))}`;
 }
 
-export function checkFolderThumb(key: Buffer, project: Project, artifactId: string, versionId: string, sig: string | undefined, nowS: number): boolean {
+export function checkFolderThumb(
+  key: Buffer, granting: Project, folder: string, artifactId: string, versionId: string, sig: string | undefined, nowS: number,
+): boolean {
   const m = /^(\d{1,12})\.([A-Za-z0-9_-]{43})$/.exec(sig ?? '');
   if (!m) return false;
   const exp = Number(m[1]);
-  if (!project.salt || !safeEqual(m[2], hmac(key, thumbPayload(project, artifactId, versionId, exp)))) return false;
-  return exp > nowS && project.visibility !== 'private';
+  if (!granting.salt || !safeEqual(m[2], hmac(key, thumbPayload(granting, folder, artifactId, versionId, exp)))) return false;
+  return exp > nowS && granting.visibility !== 'private';
 }
 
 // Admin preview of the folder page (whatever its visibility): issued by the admin API only, 1 h, bound to the epoch.
