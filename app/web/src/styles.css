@@ -161,13 +161,6 @@
   .scroll-fade[data-fade-start] { --fade-start: 28px; }
   .scroll-fade[data-fade-end] { --fade-end: 40px; }
 
-  /* Tool group: one pill, concentric round buttons (full radius on both sides). */
-  .tool-group {
-    border: 1px solid transparent;
-    background: var(--surface);
-    box-shadow: 0 0 0 1px var(--line), 0 1px 2px oklch(0 0 0 / 0.06);
-  }
-
   .no-scrollbar { scrollbar-width: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
 
