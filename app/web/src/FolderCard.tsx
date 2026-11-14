@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from 'react';
+import { useState, type DragEvent, type ReactNode } from 'react';
 import { CARD_DRAG_TYPE, ThumbImage, useThumbnail } from './ArtifactCard.tsx';
 import { formatDate, relativeDate, visibilityLabel, visibilityShort } from './format.ts';
 import { t, tn } from './i18n/index.ts';
@@ -43,18 +43,20 @@ export function useCardDrop(onDropCard: ((id: string) => void) | undefined) {
 
 const menuItem = 'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-surface-2 aria-disabled:cursor-default aria-disabled:hover:bg-transparent';
 
-export function FolderMenu({ f, onOpen, onManage, onCopy, onShare, onDelete, onOpenChange, triggerClass, tabIndex }: Omit<FolderActions, 'onDropCard'> & {
+export function FolderMenu({ f, onOpen, onManage, onCopy, onShare, onDelete, onOpenChange, triggerClass, tabIndex, trigger, align, current = false }: Omit<FolderActions, 'onDropCard'> & {
   f: NamedFolder; onOpenChange?: (o: boolean) => void; triggerClass: string; tabIndex?: number;
+  /** Folder page breadcrumb: the trigger is the folder's title and there is no “Open” item (already open). */
+  trigger?: ReactNode; align?: 'start' | 'end'; current?: boolean;
 }) {
   const priv = f.visibility === 'private';
   const full = f.count > 0;
   const label = f.title ?? f.name;
   const hintId = `folder-hint-${f.name}`;
   return (
-    <Popover label={t('folder.actions', { title: label })} trigger={<MoreIcon />} triggerClass={triggerClass} panelClass="w-64 p-1.5" tabIndex={tabIndex} onOpenChange={onOpenChange}>
+    <Popover label={t('folder.actions', { title: label })} trigger={trigger ?? <MoreIcon />} triggerClass={triggerClass} panelClass="w-64 p-1.5" align={align} tabIndex={tabIndex} onOpenChange={onOpenChange}>
       {(close) => (
         <>
-          <button type="button" className={menuItem} onClick={() => { close(); onOpen(); }}><OpenIcon className="size-4 text-muted" />{t('common.open')}</button>
+          {!current && <button type="button" className={menuItem} onClick={() => { close(); onOpen(); }}><OpenIcon className="size-4 text-muted" />{t('common.open')}</button>}
           <button type="button" className={menuItem} aria-disabled={priv || undefined} aria-describedby={priv ? `${hintId}-copy` : undefined}
             onClick={() => { if (priv) return; close(); onCopy(); }}>
             <CopyIcon className={`size-4 ${priv ? 'text-line-strong' : 'text-muted'}`} />

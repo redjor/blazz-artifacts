@@ -3,13 +3,13 @@ import { createPortal } from 'react-dom';
 import { api, copyDeferred, copyText, openPreview } from './api.ts';
 import { ActionsMenu, ArtifactCard, CARD_DRAG_TYPE, MetaLine } from './ArtifactCard.tsx';
 import { ArtifactDrawer, type LinkActions } from './ArtifactPanel.tsx';
-import { FolderCard, FolderRow, folderKey, folderOfKey, type FolderActions, type NamedFolder } from './FolderCard.tsx';
-import { confirmExposure, deleteChildrenNote, FolderDrawer } from './FolderPanel.tsx';
+import { FolderCard, FolderMenu, FolderRow, folderKey, folderOfKey, type FolderActions, type NamedFolder } from './FolderCard.tsx';
+import { confirmExposure, deleteChildrenNote, FolderDrawer, type TabId } from './FolderPanel.tsx';
 import { ACCEPT_ALL, compareText, KIND_FILTERS, kindLabel, kindTileLabel, VISIBILITY_ORDER, visibilityLabel, visibilityShort } from './format.ts';
 import { t, tn, type Locale, type MessageKey } from './i18n/index.ts';
 import { LanguageSwitch } from './LanguageSwitch.tsx';
 import { readHash, writeHash } from './hash.ts';
-import { CheckIcon, ChevronRightIcon, CloseIcon, FilterIcon, FolderIcon, FolderPlusIcon, GridIcon, KIND_ICON, KeyboardIcon, ListIcon, LogoutIcon, PinIcon, SearchIcon, SortIcon, UploadIcon, VISIBILITY_ICON } from './icons.tsx';
+import { CheckIcon, ChevronDownIcon, CloseIcon, FilterIcon, FolderPlusIcon, GridIcon, KIND_ICON, KeyboardIcon, ListIcon, LogoutIcon, PinIcon, PlusIcon, SearchIcon, SortIcon, UploadIcon, VISIBILITY_ICON } from './icons.tsx';
 import { hasOpenLayer, isEditable } from './layers.ts';
 import { Popover, type PopoverHandle } from './Popover.tsx';
 import { ancestorsOf, childrenOf, folderPath, sharedVia, treeOptions } from './folderTree.ts';
@@ -73,6 +73,7 @@ const toolButton = 'tip tip-end relative grid size-9 place-items-center rounded-
 // Toolbar menus: on mobile, anchored to the full toolbar width (never off screen).
 const TOOL_WRAP = 'relative max-sm:static';
 const TOOL_PANEL = 'max-sm:inset-x-0';
+const menuItem = 'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-surface-2';
 const chip = (on: boolean) =>
   `inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] ${on ? 'bg-ink text-canvas' : 'bg-surface-2 text-ink hover:bg-surface-3'}`;
 
@@ -105,7 +106,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const [searchOpen, setSearchOpen] = useState(false);
   const [pending, setPending] = useState<File | null>(null);
   const [projects, setProjects] = useState<FolderSummary[]>([]);
-  const [folderOpen, setFolderOpen] = useState<string | null>(null);
+  // Folder drawer; `tab`: “Share” on the folder page opens it on the access tab.
+  const [folderOpen, setFolderOpen] = useState<{ name: string; tab?: TabId } | null>(null);
   // “New folder” dialog; `moveId`: artifact to move into it once created (from a card's menu).
   const [newFolder, setNewFolder] = useState<{ moveId: string | null } | null>(null);
   const [tagCounts, setTagCounts] = useState<LabelCount[]>([]);
@@ -225,9 +227,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const namedFolders = projects.filter((p): p is NamedFolder => p.name !== null);
   // Root: top-level folders (a search lists every matching folder, whatever its level). Inside a folder: its sub-folders.
   const inFolder = project !== null && project !== NONE ? project : null;
+  const children = inFolder ? (childrenOf(namedFolders, inFolder) as NamedFolder[]) : [];
+  const folderMatches = (f: NamedFolder) => f.name.includes(q) || !!f.title?.toLowerCase().includes(q);
   const folderCards: NamedFolder[] = filtersActive ? [] : atRoot
-    ? namedFolders.filter((f) => (q ? f.name.includes(q) || !!f.title?.toLowerCase().includes(q) : f.parent === null)).sort(FOLDER_COMPARE[sort])
-    : inFolder ? (childrenOf(namedFolders, inFolder) as NamedFolder[]) : [];
+    ? namedFolders.filter((f) => (q ? folderMatches(f) : f.parent === null)).sort(FOLDER_COMPARE[sort])
+    : children.filter((f) => !q || folderMatches(f));
   const artifactOrder = visible.map((a) => a.id);
   const order = [...folderCards.map((f) => folderKey(f.name)), ...artifactOrder];
   // Roving tabindex: a single card reachable with Tab, arrows do the rest.
@@ -236,10 +240,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const projectNames = treeOptions(namedFolders).map((o) => o.folder.name);
   const sharedViaTitleOf = (f: NamedFolder) => { const v = f.visibility === 'private' ? sharedVia(namedFolders, f.name) : null; return v ? (v.title ?? v.name) : undefined; };
   const folderPaths = Object.fromEntries(namedFolders.map((f) => [f.name, folderPath(namedFolders, f.name)]));
-  const currentFolder = project && project !== NONE ? projects.find((p) => p.name === project) ?? null : null;
-  const FolderVisIcon = currentFolder && currentFolder.visibility !== 'private' ? VISIBILITY_ICON[currentFolder.visibility] : null;
+  const currentFolder = namedFolders.find((p) => p.name === inFolder) ?? null;
+  // Folder page (a folder or “no folder”): top bar with the path, narrow column, no type tiles (the type goes in the filter).
+  const folderPage = project !== null;
+  const pageTitle = currentFolder ? folderTitle(currentFolder) : t('common.noFolder');
+  const FolderVisIcon = VISIBILITY_ICON[currentFolder?.visibility ?? 'private'];
   const toggleTag = (t: string) => setActiveTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
-  const filterCount = activeTags.length + (visibility ? 1 : 0);
+  const filterCount = activeTags.length + (visibility ? 1 : 0) + (folderPage && kind ? 1 : 0);
   const clearFilters = () => {
     setActiveTags([]);
     setVisibility(null);
@@ -260,6 +267,19 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
     setQuery('');
     searchButton.current?.focus();
   };
+  // Sort choices: the root's “Sort” menu, or the folder page's “Display” menu.
+  const sortOptions = () => (
+    <div role="radiogroup" aria-label={t('gallery.sortGroup')}>
+      {SORTS.map((s) => (
+        <label key={s} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm hover:bg-surface-2 has-[:focus-visible]:outline-2 has-[:focus-visible]:-outline-offset-2 has-[:focus-visible]:outline-ring">
+          <input type="radio" name="gallery-sort" value={s} checked={sort === s} onChange={() => setSort(s)} className="sr-only" data-autofocus={sort === s || undefined} />
+          <CheckIcon className={`size-4 ${sort === s ? 'text-ink' : 'invisible'}`} />
+          <span className={sort === s ? 'font-medium' : ''}>{t(`sort.${s}`)}</span>
+        </label>
+      ))}
+      <p className="mx-2.5 mt-1 border-t border-line pt-2 pb-1 text-xs text-muted">{t('gallery.pinnedFirst')}</p>
+    </div>
+  );
 
   // Gallery shortcuts: never while typing, with Ctrl/Cmd/Alt, or when a layer is open.
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
@@ -296,7 +316,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
     if (e.key === 'e' || e.key === 'E') {
       e.preventDefault();
       const folder = folderOfKey(id);
-      if (folder) setFolderOpen(folder);
+      if (folder) setFolderOpen({ name: folder });
       else setSelected(id);
       return;
     }
@@ -392,7 +412,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
     } else setNotice(t('notice.folderCreated', { name: f.name }));
     await reload();
     setProject(f.name);
-    if (!art) setFolderOpen(f.name);
+    if (!art) setFolderOpen({ name: f.name });
   };
 
   /** Enters a folder from its card: the search (which may have found it) closes, focus goes to the gallery. */
@@ -449,8 +469,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
     try {
       await api.deleteFolder(f.name);
       setNotice(t('notice.folderDeleted'));
+      // Deleted from its own page (breadcrumb menu): back to its parent, focus on the gallery.
+      const here = f.name === project;
+      if (here) setProject(f.parent);
       await reload();
-      requestAnimationFrame(() => cardFocusTarget(card)?.focus());
+      requestAnimationFrame(() => (here ? gallery.current : cardFocusTarget(card))?.focus());
     } catch (e) {
       setNotice((e as Error).message);
     }
@@ -463,7 +486,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
 
   const folderActionsFor = (f: NamedFolder): FolderActions => ({
     onOpen: () => enterFolder(f.name),
-    onManage: () => setFolderOpen(f.name),
+    onManage: () => setFolderOpen({ name: f.name }),
     onCopy: () => void copyFolderLink(f),
     onShare: () => void shareFolder(f),
     onDelete: () => void deleteFolder(f),
@@ -514,29 +537,57 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   return (
     <div className="min-h-dvh" onDragOver={(e) => { if (!e.dataTransfer.types.includes('Files')) return; e.preventDefault(); setDragging(true); }}
       onDragLeave={(e) => { if (!e.relatedTarget) setDragging(false); }} onDrop={onDrop}>
-      <div className="mx-auto max-w-[1440px] px-5 pt-7 pb-24 sm:px-10 sm:pt-11 lg:px-16 xl:px-24">
-        <header className="flex items-center justify-between gap-4">
-          <h1 className="font-serif text-[2.375rem] leading-tight font-normal tracking-[-0.015em] sm:text-[2.875rem]">{t('app.heading')}</h1>
-          <div className="flex items-center gap-1">
-            <LanguageSwitch />
-            <button type="button" onClick={onLogout} aria-label={t('gallery.logout')} data-tip={t('gallery.logout')} className={`${iconButton} text-muted hover:text-ink`}>
-              <LogoutIcon />
+      {folderPage && (
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-line bg-canvas px-3.5">
+          <FolderBreadcrumb
+            trail={[
+              { name: null, title: t('app.heading') },
+              ...(currentFolder ? ancestorsOf(namedFolders, currentFolder.name).map((a) => ({ name: a.name, title: a.title ?? a.name })) : []),
+            ]}
+            current={currentFolder ? (
+              <FolderMenu f={currentFolder} {...folderActionsFor(currentFolder)} current align="start"
+                trigger={<><span className="truncate">{pageTitle}</span><ChevronDownIcon className="size-3.5 text-muted" /></>}
+                triggerClass="flex min-w-0 max-w-[16rem] items-center gap-1 rounded-md px-1.5 py-1 hover:bg-surface-2 aria-expanded:bg-surface-2" />
+            ) : <span className="truncate px-1.5">{pageTitle}</span>}
+            onOpen={(name) => (name === null ? leaveFolder() : setProject(name))} />
+          {currentFolder && (
+            <button type="button" onClick={() => setFolderOpen({ name: currentFolder.name, tab: 'access' })}
+              aria-label={t('folder.shareButtonLabel', { title: pageTitle, visibility: visibilityLabel(currentFolder.visibility).toLowerCase() })}
+              className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-2.5 text-[15px] hover:bg-surface-2 max-sm:w-9 max-sm:justify-center max-sm:px-0">
+              <FolderVisIcon className="size-[18px]" /><span className="max-sm:sr-only">{t('folder.shareButton')}</span>
             </button>
-          </div>
+          )}
         </header>
+      )}
+      <div className={folderPage ? 'mx-auto max-w-[54rem] px-5 pt-10 pb-24 sm:px-8 sm:pt-12' : 'mx-auto max-w-[1440px] px-5 pt-7 pb-24 sm:px-10 sm:pt-11 lg:px-16 xl:px-24'}>
+        {!folderPage && (
+          <header className="flex items-center justify-between gap-4">
+            <h1 className="font-serif text-[2.375rem] leading-tight font-normal tracking-[-0.015em] sm:text-[2.875rem]">{t('app.heading')}</h1>
+            <div className="flex items-center gap-1">
+              <LanguageSwitch />
+              <button type="button" onClick={onLogout} aria-label={t('gallery.logout')} data-tip={t('gallery.logout')} className={`${iconButton} text-muted hover:text-ink`}>
+                <LogoutIcon />
+              </button>
+            </div>
+          </header>
+        )}
 
-        {/* Folder creation on the left, tools on the right; the search slots in before the tools (or below on mobile). */}
-        <div className="relative mt-6 flex flex-wrap items-center gap-x-3 gap-y-3 sm:mt-8">
-          {/* Folders are gallery cards; only creation lives here. */}
-          <div className="order-1 flex min-w-0 grow basis-full items-center gap-1 sm:basis-0">
-            <button type="button" onClick={() => setNewFolder({ moveId: null })} aria-label={t('common.newFolder')}
-              data-tip={t('common.newFolder')} className="tip inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-3 text-[15px] whitespace-nowrap text-muted hover:bg-surface-2 hover:text-ink max-sm:w-10 max-sm:justify-center max-sm:px-0 sm:pr-3.5 sm:pl-2.5">
-              <FolderPlusIcon className="size-[18px]" /><span className="max-sm:sr-only">{t('common.newFolder')}</span>
-            </button>
-          </div>
+        {/* Root: folder creation on the left. Folder page: its title. Tools on the right; the search slots in before them (or below on mobile). */}
+        <div className={`relative flex flex-wrap items-center gap-x-3 gap-y-3 ${folderPage ? '' : 'mt-6 sm:mt-8'}`}>
+          {folderPage ? (
+            <h1 title={pageTitle} className="order-1 min-w-0 grow basis-0 truncate font-serif text-[2rem] leading-tight font-normal tracking-[-0.015em] sm:text-[2.25rem]">{pageTitle}</h1>
+          ) : (
+            /* Folders are gallery cards; only creation lives here. */
+            <div className="order-1 flex min-w-0 grow basis-full items-center gap-1 sm:basis-0">
+              <button type="button" onClick={() => setNewFolder({ moveId: null })} aria-label={t('common.newFolder')}
+                data-tip={t('common.newFolder')} className="tip inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-3 text-[15px] whitespace-nowrap text-muted hover:bg-surface-2 hover:text-ink max-sm:w-10 max-sm:justify-center max-sm:px-0 sm:pr-3.5 sm:pl-2.5">
+                <FolderPlusIcon className="size-[18px]" /><span className="max-sm:sr-only">{t('common.newFolder')}</span>
+              </button>
+            </div>
+          )}
 
           {searchOpen && (
-            <label className="order-3 flex h-10 w-full items-center gap-2 rounded-full border border-line bg-surface px-3.5 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-ring sm:order-2 sm:w-72">
+            <label className={`order-3 flex w-full items-center gap-2 rounded-full border border-line bg-surface px-3.5 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-ring sm:order-2 ${folderPage ? 'h-9 sm:w-56' : 'h-10 sm:w-72'}`}>
               <SearchIcon className="size-4 text-muted" />
               <span className="sr-only">{t('shortcut.search')}</span>
               <input ref={searchInput} type="search" placeholder={t('gallery.searchPlaceholder')} value={query} onChange={(e) => setQuery(e.target.value)}
@@ -546,19 +597,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
           )}
 
           <div className="order-2 ml-auto flex shrink-0 items-center gap-2 sm:order-3">
-            {currentFolder && (
-              <>
-                <button type="button" onClick={() => setFolderOpen(currentFolder.name)}
-                  aria-label={t('gallery.folderButtonLabel', { name: currentFolder.name ?? '', visibility: visibilityLabel(currentFolder.visibility).toLowerCase() })}
-                  className="relative inline-flex h-9 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-3 text-sm text-ink hover:bg-surface-2">
-                  <FolderIcon className="size-4" />
-                  <span>{t('gallery.folderButton')}</span>
-                  {FolderVisIcon && <FolderVisIcon className="size-3.5 text-muted" />}
-                </button>
-                <span aria-hidden="true" className="mx-1 h-5 w-px bg-line max-sm:hidden" />
-              </>
-            )}
-            <div role="toolbar" aria-label={t('gallery.toolbar')} className="tool-group flex items-center gap-0.5 rounded-full p-0.5">
+            <div role="toolbar" aria-label={t('gallery.toolbar')} className={`flex items-center ${folderPage ? 'gap-1' : 'tool-group gap-0.5 rounded-full p-0.5'}`}>
             <button ref={searchButton} type="button" aria-label={searchOpen ? t('gallery.closeSearch') : t('shortcut.search')} data-tip={searchOpen ? t('gallery.closeSearch') : t('gallery.searchTip')}
               aria-keyshortcuts="/" aria-pressed={searchOpen} onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))} className={toolButton}>
               {searchOpen ? <CloseIcon /> : <SearchIcon />}
@@ -568,6 +607,20 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
               triggerClass={toolButton} wrapClass={TOOL_WRAP} panelClass={`${TOOL_PANEL} sm:w-[22rem] p-4`}>
               {() => (
                 <div className="space-y-4">
+                  {folderPage && (
+                    <div role="group" aria-label={t('gallery.type')}>
+                      <p className="text-xs font-medium text-muted">{t('gallery.type')}</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <button type="button" aria-pressed={kind === null} onClick={() => setKind(null)} className={chip(kind === null)}>{t('gallery.all')}</button>
+                        {KIND_FILTERS.map(({ kind: k }) => (
+                          <button key={k} type="button" aria-pressed={kind === k} disabled={kindCount(k) === 0 && kind !== k} onClick={() => setKind(kind === k ? null : k)}
+                            className={`${chip(kind === k)} disabled:cursor-not-allowed disabled:opacity-40`}>
+                            {kindTileLabel(k)} <span className="tabular-nums opacity-70">{kindCount(k)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div role="group" aria-label={t('common.visibility')}>
                     <p className="text-xs font-medium text-muted">{t('common.visibility')}</p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
@@ -599,27 +652,43 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
                 </div>
               )}
             </Popover>
-            <Popover label={t('gallery.sortLabel', { label: t(`sort.${sort}`) })} tip={t('gallery.sort')}
-              trigger={<><SortIcon />{sort !== 'recent' && <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-ring ring-2 ring-surface" />}</>}
-              triggerClass={toolButton} wrapClass={TOOL_WRAP} panelClass={`${TOOL_PANEL} sm:w-56 p-1.5`}>
-              {() => (
-                <div role="radiogroup" aria-label={t('gallery.sortGroup')}>
-                  {SORTS.map((s) => (
-                    <label key={s} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm hover:bg-surface-2 has-[:focus-visible]:outline-2 has-[:focus-visible]:-outline-offset-2 has-[:focus-visible]:outline-ring">
-                      <input type="radio" name="gallery-sort" value={s} checked={sort === s} onChange={() => setSort(s)} className="sr-only" data-autofocus={sort === s || undefined} />
-                      <CheckIcon className={`size-4 ${sort === s ? 'text-ink' : 'invisible'}`} />
-                      <span className={sort === s ? 'font-medium' : ''}>{t(`sort.${s}`)}</span>
-                    </label>
-                  ))}
-                  <p className="mx-2.5 mt-1 border-t border-line pt-2 pb-1 text-xs text-muted">{t('gallery.pinnedFirst')}</p>
-                </div>
-              )}
-            </Popover>
-            <button type="button" aria-label={view === 'grid' ? t('gallery.showList') : t('gallery.showGrid')} data-tip={view === 'grid' ? t('gallery.showList') : t('gallery.showGrid')}
-              onClick={() => setView(view === 'grid' ? 'list' : 'grid')} className={toolButton}>
-              {view === 'grid' ? <ListIcon /> : <GridIcon />}
-            </button>
-            <Popover ref={shortcuts} label={t('gallery.shortcuts')} tip={t('gallery.shortcutsTip')} trigger={<KeyboardIcon />} triggerClass={toolButton} wrapClass={TOOL_WRAP} panelClass={`${TOOL_PANEL} sm:w-[22rem] p-4`}>
+            {folderPage ? (
+              /* Folder page: layout and sort share one “Display” menu (three tools, as in the folder mockup). */
+              <Popover label={t('gallery.displayLabel', { layout: t(view === 'grid' ? 'gallery.grid' : 'gallery.list'), sort: t(`sort.${sort}`) })} tip={t('gallery.display')}
+                trigger={<>{view === 'grid' ? <GridIcon /> : <ListIcon />}{sort !== 'recent' && <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-ring ring-2 ring-surface" />}</>}
+                triggerClass={toolButton} wrapClass={TOOL_WRAP} panelClass={`${TOOL_PANEL} sm:w-60 p-1.5`}>
+                {() => (
+                  <>
+                    <div role="radiogroup" aria-label={t('gallery.layout')} className="grid grid-cols-2 gap-1">
+                      {(['grid', 'list'] as const).map((v) => {
+                        const Icon = v === 'grid' ? GridIcon : ListIcon;
+                        return (
+                          <label key={v} className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg px-2.5 py-2 text-sm has-[:focus-visible]:outline-2 has-[:focus-visible]:-outline-offset-2 has-[:focus-visible]:outline-ring ${view === v ? 'bg-surface-2 font-medium' : 'text-muted hover:bg-surface-2 hover:text-ink'}`}>
+                            <input type="radio" name="gallery-view" value={v} checked={view === v} onChange={() => setView(v)} className="sr-only" data-autofocus={view === v || undefined} />
+                            <Icon className="size-4" />{t(v === 'grid' ? 'gallery.grid' : 'gallery.list')}
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <p className="mx-2.5 mt-2 border-t border-line pt-2.5 pb-1 text-xs font-medium text-muted">{t('gallery.sort')}</p>
+                    {sortOptions()}
+                  </>
+                )}
+              </Popover>
+            ) : (
+              <>
+                <Popover label={t('gallery.sortLabel', { label: t(`sort.${sort}`) })} tip={t('gallery.sort')}
+                  trigger={<><SortIcon />{sort !== 'recent' && <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-ring ring-2 ring-surface" />}</>}
+                  triggerClass={toolButton} wrapClass={TOOL_WRAP} panelClass={`${TOOL_PANEL} sm:w-56 p-1.5`}>
+                  {sortOptions}
+                </Popover>
+                <button type="button" aria-label={view === 'grid' ? t('gallery.showList') : t('gallery.showGrid')} data-tip={view === 'grid' ? t('gallery.showList') : t('gallery.showGrid')}
+                  onClick={() => setView(view === 'grid' ? 'list' : 'grid')} className={toolButton}>
+                  {view === 'grid' ? <ListIcon /> : <GridIcon />}
+                </button>
+              </>
+            )}
+            {!folderPage && <Popover ref={shortcuts} label={t('gallery.shortcuts')} tip={t('gallery.shortcutsTip')} trigger={<KeyboardIcon />} triggerClass={toolButton} wrapClass={TOOL_WRAP} panelClass={`${TOOL_PANEL} sm:w-[22rem] p-4`}>
               {() => (
                 <div tabIndex={-1} data-autofocus className="outline-none">
                   <p className="text-sm font-medium">{t('gallery.shortcuts')}</p>
@@ -633,17 +702,38 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
                   </dl>
                 </div>
               )}
-            </Popover>
+            </Popover>}
             </div>
-            <button type="button" aria-label={t('shortcut.publish')} data-tip={t('gallery.publishTip')} aria-keyshortcuts="N" onClick={() => pick(ACCEPT_ALL)}
-              className="tip tip-end inline-flex h-10 items-center gap-1.5 rounded-full bg-ink pr-4 pl-3 text-sm font-medium text-canvas hover:opacity-90 max-sm:w-10 max-sm:justify-center max-sm:px-0">
-              <UploadIcon className="size-[18px]" /><span className="max-sm:sr-only">{t('gallery.publish')}</span>
-            </button>
+            {folderPage ? (
+              <Popover label={t('gallery.create')} trigger={<><PlusIcon className="size-[18px]" /><span>{t('gallery.create')}</span><ChevronDownIcon className="size-4 text-muted" /></>}
+                triggerClass="inline-flex h-9 items-center gap-1.5 rounded-lg bg-surface-2 pr-2 pl-2.5 text-sm font-medium hover:bg-surface-3 aria-expanded:bg-surface-3" panelClass="w-64 p-1.5">
+                {(close) => (
+                  <>
+                    <button type="button" aria-keyshortcuts="N" onClick={() => { close(); pick(ACCEPT_ALL); }} className={menuItem}>
+                      <UploadIcon className="size-4 text-muted" /><span className="flex-1">{t('shortcut.publish')}</span><kbd>N</kbd>
+                    </button>
+                    <button type="button" onClick={() => { close(); setNewFolder({ moveId: null }); }} className={menuItem}>
+                      <FolderPlusIcon className="size-4 text-muted" />{currentFolder ? t('gallery.newSubfolder') : t('common.newFolder')}
+                    </button>
+                  </>
+                )}
+              </Popover>
+            ) : (
+              <button type="button" aria-label={t('shortcut.publish')} data-tip={t('gallery.publishTip')} aria-keyshortcuts="N" onClick={() => pick(ACCEPT_ALL)}
+                className="tip tip-end inline-flex h-10 items-center gap-1.5 rounded-full bg-ink pr-4 pl-3 text-sm font-medium text-canvas hover:opacity-90 max-sm:w-10 max-sm:justify-center max-sm:px-0">
+                <UploadIcon className="size-[18px]" /><span className="max-sm:sr-only">{t('gallery.publish')}</span>
+              </button>
+            )}
           </div>
         </div>
 
         {filterCount > 0 && (
           <div className="mt-3 flex flex-wrap items-center gap-1.5" aria-label={t('gallery.activeFilters')} role="group">
+            {folderPage && kind && (
+              <button type="button" onClick={() => setKind(null)} className={chip(false)} aria-label={t('gallery.removeFilter', { name: kindTileLabel(kind) })}>
+                {kindTileLabel(kind)} <CloseIcon className="size-3.5 text-muted" />
+              </button>
+            )}
             {visibility && (
               <button type="button" onClick={() => setVisibility(null)} className={chip(false)} aria-label={t('gallery.removeFilter', { name: visibilityShort(visibility) })}>
                 {visibilityShort(visibility)} <CloseIcon className="size-3.5 text-muted" />
@@ -658,7 +748,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
           </div>
         )}
 
-        <section aria-labelledby="kinds-title" className="mt-9 sm:mt-11">
+        {!folderPage && <section aria-labelledby="kinds-title" className="mt-9 sm:mt-11">
           <div className="flex items-baseline gap-3">
             <h2 id="kinds-title" className="text-[15px] text-muted">{t('gallery.filterByType')}</h2>
             {kind && (
@@ -688,40 +778,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
               );
             })}
           </div>
-        </section>
+        </section>}
 
-        <section ref={gallery} tabIndex={-1} aria-label={currentFolder ? t('gallery.folderSection', { name: currentFolder.title ?? currentFolder.name ?? '' }) : t('gallery.published')} className="mt-9 outline-none sm:mt-12">
-          {loaded && currentFolder && (
-            <FolderBreadcrumb
-              trail={[
-                { name: null, title: t('tree.root') },
-                ...ancestorsOf(namedFolders, currentFolder.name!).map((a) => ({ name: a.name, title: a.title ?? a.name })),
-                { name: currentFolder.name, title: currentFolder.title ?? currentFolder.name! },
-              ]}
-              onOpen={(name) => (name === null ? leaveFolder() : setProject(name))} />
-          )}
-          {loaded && project !== null && !currentFolder && (
-            <nav aria-label={t('gallery.breadcrumb')} className="mb-4 sm:mb-5">
-              <ol className="flex min-w-0 items-center gap-1 text-[15px]">
-                <li className="shrink-0">
-                  <button type="button" onClick={leaveFolder} className="-mx-1.5 rounded-md px-1.5 py-0.5 text-muted underline decoration-transparent underline-offset-4 hover:text-ink hover:decoration-line-strong">{t('app.heading')}</button>
-                </li>
-                <li aria-hidden="true" className="shrink-0 text-muted"><ChevronRightIcon className="size-4" /></li>
-                <li aria-current="page" className="min-w-0 truncate">{project === NONE ? t('common.noFolder') : project}</li>
-              </ol>
-            </nav>
-          )}
-          {!loaded ? null : currentFolder && inScope.length === 0 && folderCards.length === 0 ? (
-            <div className="grid place-items-center gap-3 rounded-2xl border border-dashed border-line-strong px-6 py-16 text-center">
-              <FolderIcon className="size-7 text-muted" />
-              <p className="font-serif text-2xl leading-tight tracking-[-0.01em]">{t('gallery.folderEmpty', { name: currentFolder.name ?? '' })}</p>
-              <p className="max-w-md text-[15px] text-muted text-pretty">{t('gallery.folderEmptyHint')}</p>
-              <div className="mt-2 flex flex-wrap justify-center gap-2">
-                <button type="button" onClick={() => pick(ACCEPT_ALL)} className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-medium text-canvas hover:opacity-90">
-                  <UploadIcon className="size-4" />{t('gallery.publishHere')}
-                </button>
-                <button type="button" onClick={() => setFolderOpen(currentFolder.name)} className="rounded-full bg-surface-2 px-4 py-2 text-sm hover:bg-surface-3">{t('gallery.manageFolder')}</button>
-              </div>
+        <section ref={gallery} tabIndex={-1} aria-label={folderPage ? t('gallery.folderSection', { name: pageTitle }) : t('gallery.published')}
+          className={`outline-none ${folderPage ? 'mt-8 sm:mt-10' : 'mt-9 sm:mt-12'}`}>
+          {!loaded ? null : currentFolder && inScope.length === 0 && children.length === 0 ? (
+            <div className="px-6 py-16 text-center sm:py-20">
+              <p className="text-base text-muted">{t('gallery.folderEmpty', { name: pageTitle })}</p>
+              <p className="mx-auto mt-3 max-w-sm text-sm text-muted text-pretty">{t('gallery.folderEmptyHint')}</p>
             </div>
           ) : items.length === 0 && namedFolders.length === 0 ? (
             <button type="button" data-static onClick={() => pick(ACCEPT_ALL)}
@@ -813,10 +877,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       {newFolder && <NewFolderDialog existing={namedFolders.map((f) => f.name)} parent={inFolder} parentTitle={currentFolder?.title ?? undefined} onClose={() => setNewFolder(null)} onCreated={onFolderCreated} />}
       {pending && <PublishDialog key={`${pending.name}-${pending.lastModified}-${pending.size}`} file={pending} defaultProject={project && project !== NONE ? project : ''} projects={projectNames} paths={folderPaths} tags={tagCounts.map((t) => t.name)} onClose={() => setPending(null)} onPublished={reload} />}
       {loaded && folderOpen && !selected && (
-        <FolderDrawer key={folderOpen} name={folderOpen} folders={namedFolders} summary={projects.find((p) => p.name === folderOpen)} onClose={() => setFolderOpen(null)}
+        <FolderDrawer key={folderOpen.name} name={folderOpen.name} initialTab={folderOpen.tab} folders={namedFolders} summary={projects.find((p) => p.name === folderOpen.name)} onClose={() => setFolderOpen(null)}
           onChanged={reload} onNotice={setNotice}
-          fallbackFocus={() => list.current?.querySelector<HTMLElement>(`[data-card="${CSS.escape(folderKey(folderOpen))}"]`) ?? gallery.current}
-          onRenamed={(n) => { setProject(n); setFolderOpen(n); }} />
+          fallbackFocus={() => list.current?.querySelector<HTMLElement>(`[data-card="${CSS.escape(folderKey(folderOpen.name))}"]`) ?? gallery.current}
+          onRenamed={(n) => { setProject(n); setFolderOpen({ name: n }); }} />
       )}
       {loaded && selected && (
         <ArtifactDrawer id={selected} summary={selectedSummary} order={artifactOrder} projects={projectNames} paths={folderPaths} tagNames={tagCounts.map((t) => t.name)} links={links}

@@ -12,7 +12,7 @@ import { useLayer } from './layers.ts';
 import type { FolderArtifact, FolderDetail, FolderSummary, Visibility } from './types.ts';
 import { VisibilityPicker } from './VisibilityPicker.tsx';
 
-type TabId = 'info' | 'access' | 'order';
+export type TabId = 'info' | 'access' | 'order';
 const TABS: { id: TabId; label: MessageKey }[] = [
   { id: 'info', label: 'tab.info' },
   { id: 'access', label: 'tab.access' },
@@ -196,11 +196,13 @@ function OrderList({ folder, onSave }: { folder: FolderDetail; onSave: (ids: str
  * “Folder” panel of a project: same drawer as artifacts. Title, description, visibility, links, audience,
  * card order, visitor page preview. The folder sheet is created on the first change.
  */
-export function FolderDrawer({ name, summary, folders, onClose, onChanged, onNotice, onRenamed, fallbackFocus }: {
+export function FolderDrawer({ name, summary, folders, initialTab = 'info', onClose, onChanged, onNotice, onRenamed, fallbackFocus }: {
   name: string; summary: FolderSummary | undefined; folders: TreeFolder[]; fallbackFocus?: () => HTMLElement | null;
+  /** “Share” on the folder page opens straight on the access tab. */
+  initialTab?: TabId;
   onClose: () => void; onChanged: () => unknown; onNotice: (m: string) => void; onRenamed: (name: string) => void;
 }) {
-  const [tab, setTab] = useState<TabId>('info');
+  const [tab, setTab] = useState<TabId>(initialTab);
   const [closing, setClosing] = useState(false);
   const [folder, setFolder] = useState<FolderDetail | null>(null);
   const [info, setInfo] = useState<InfoDraft | null>(null);
