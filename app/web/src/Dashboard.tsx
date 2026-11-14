@@ -4,7 +4,7 @@ import { api, copyDeferred, copyText, openPreview } from './api.ts';
 import { ActionsMenu, ArtifactCard, CARD_DRAG_TYPE, MetaLine } from './ArtifactCard.tsx';
 import { ArtifactDrawer, type LinkActions } from './ArtifactPanel.tsx';
 import { FolderCard, FolderRow, folderKey, folderOfKey, type FolderActions, type NamedFolder } from './FolderCard.tsx';
-import { confirmExposure, FolderDrawer } from './FolderPanel.tsx';
+import { confirmExposure, deleteChildrenNote, FolderDrawer } from './FolderPanel.tsx';
 import { ACCEPT_ALL, compareText, KIND_FILTERS, kindLabel, kindTileLabel, VISIBILITY_ORDER, visibilityLabel, visibilityShort } from './format.ts';
 import { t, tn, type Locale, type MessageKey } from './i18n/index.ts';
 import { LanguageSwitch } from './LanguageSwitch.tsx';
@@ -443,7 +443,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   /** Deletes an empty folder (the menu disables it otherwise; the server only deletes the sheet). */
   const deleteFolder = async (f: NamedFolder): Promise<void> => {
     if (f.count > 0) return setNotice(t('folder.emptyFirst'));
-    if (!window.confirm(t('confirm.deleteEmptyFolder', { title: f.title ?? f.name, name: f.name }))) return;
+    if (!window.confirm(t('confirm.deleteEmptyFolder', { title: f.title ?? f.name, name: f.name }) + deleteChildrenNote(namedFolders, f.name, f.parent))) return;
     const card = folderKey(f.name);
     lastIndex.current = Math.max(0, order.indexOf(card));
     try {

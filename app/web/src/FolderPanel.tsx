@@ -34,6 +34,14 @@ export function confirmExposure(f: Pick<FolderDetail, 'name' | 'visibility' | 'p
   return window.confirm(tn('exposure.confirm', privateCount, { name: f.name, how: t(`exposure.${next}`) }) + extra);
 }
 
+/** Delete confirmation suffix: the sub-folders of `name` move up one level (empty when there are none). */
+export function deleteChildrenNote(tree: TreeFolder[], name: string, parent: string | null): string {
+  const kids = childrenOf(tree, name).length;
+  if (kids === 0) return '';
+  const p = tree.find((x) => x.name === parent);
+  return tn('confirm.deleteChildren', kids, { target: p ? `“${p.title ?? p.name}”` : t('move.root') });
+}
+
 function RowThumb({ a }: { a: FolderArtifact }) {
   const [thumb, onError] = useThumbnail(a.thumbnailUrl);
   if (thumb) return <ThumbImage src={thumb} onError={onError} className="aspect-[8/5] w-16 shrink-0 rounded-md" />;
@@ -383,16 +391,18 @@ export function FolderDrawer({ name, summary, folders, onClose, onChanged, onNot
     if (parent === f.parent) return;
     const into = opener(parent);
     const from = opener(f.parent);
-    if (into && !window.confirm(tn('move.confirmIn', subtreeExposure(folders, f.name).artifacts, { name: f.name, parent: labelOf(into) }))) return;
-    if (!into && from && !window.confirm(t('move.confirmOut', { name: f.name, parent: labelOf(from) }))) return;
+    if (into?.name !== from?.name) {
+      const sub = subtreeExposure(folders, f.name);
+      // Leaving the access of `from` (to the top level or to another shared tree): its visitors lose access.
+      if (from && !window.confirm(t('move.confirmOut', { name: f.name, parent: labelOf(from) }))) return;
+      if (into && !window.confirm(tn('move.confirmIn', sub.artifacts, { name: f.name, parent: labelOf(into) }) + (sub.folders > 0 ? tn('exposure.subtree', sub.folders) : ''))) return;
+    }
     await act('move', () => api.updateFolder(f.name, { parent }), null);
   };
 
   const removeSheet = async () => {
     const empty = f.count === 0;
-    const kids = childrenOf(folders, f.name).length;
-    const parentFolder = folders.find((x) => x.name === f.parent);
-    const extra = kids > 0 ? tn('confirm.deleteChildren', kids, { target: parentFolder ? `“${labelOf(parentFolder)}”` : t('move.root') }) : '';
+    const extra = deleteChildrenNote(folders, f.name, f.parent);
     if (!window.confirm((empty
       ? t('confirm.deleteEmptyFolder', { title: f.name, name: f.name })
       : t('confirm.deleteFolderSheet', { name: f.name })) + extra)) return;
