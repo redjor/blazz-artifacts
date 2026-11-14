@@ -49,10 +49,21 @@ export function t(key: MessageKey, params?: Params): string {
   return interpolate(DICTS[current][key], params);
 }
 
+// One number format per locale: tn() runs for every card on every render.
+const numberFormats = new Map<Locale, Intl.NumberFormat>();
+function numberFormat(locale: Locale): Intl.NumberFormat {
+  let f = numberFormats.get(locale);
+  if (!f) {
+    f = new Intl.NumberFormat(locale);
+    numberFormats.set(locale, f);
+  }
+  return f;
+}
+
 /** Plural message: `{n}` is `n` formatted for the active locale unless `params.n` is given. */
 export function tn(key: PluralKey, n: number, params?: Params): string {
   const msg = DICTS[current][`${key}.${pluralForm(current, n)}` as MessageKey];
-  return interpolate(msg, { n: new Intl.NumberFormat(current).format(n), ...params });
+  return interpolate(msg, { n: numberFormat(current).format(n), ...params });
 }
 
 /** Localised text of an API error code, or null if the code is unknown to this UI. */

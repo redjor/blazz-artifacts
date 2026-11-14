@@ -27,10 +27,15 @@ export function PublishDialog({ file, defaultProject, projects, paths, tags: kno
 
   useEffect(() => {
     setSlugState('checking');
+    // `live`: an answer for a slug typed earlier (already sent, so not cancelled by clearTimeout) is ignored.
+    let live = true;
     const timer = setTimeout(() => {
-      api.slug(slug).then((r) => setSlugState(!r.valid ? 'invalid' : r.available ? 'ok' : 'taken')).catch(() => setSlugState('invalid'));
+      api.slug(slug).then((r) => live && setSlugState(!r.valid ? 'invalid' : r.available ? 'ok' : 'taken')).catch(() => live && setSlugState('invalid'));
     }, 300);
-    return () => clearTimeout(timer);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
   }, [slug]);
 
   async function submit(e: FormEvent) {
@@ -63,12 +68,12 @@ export function PublishDialog({ file, defaultProject, projects, paths, tags: kno
           {result.visibility === 'link' ? t('publish.linkHint') : t('publish.urlLabel')}
         </p>
         <div className="flex gap-2">
-          <input readOnly value={result.url} className="min-w-0 flex-1 rounded-lg border border-line bg-transparent px-3 py-2 text-sm hover:border-line-strong" />
+          <input readOnly value={result.url} aria-label={t('publish.urlLabel')} className="min-w-0 flex-1 rounded-lg border border-line bg-transparent px-3 py-2 text-sm hover:border-line-strong" />
           <button type="button" data-autofocus onClick={() => copyText(result.url).then(() => { setCopied(true); setError(null); }, () => { setCopied(false); setError(t('publish.copyFailed')); })} className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-canvas">
             {copied ? t('common.copied') : t('common.copy')}
           </button>
         </div>
-        {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+        {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
       </Modal>
     );
   }
@@ -108,7 +113,7 @@ export function PublishDialog({ file, defaultProject, projects, paths, tags: kno
             <span className="block text-xs text-muted">{t('common.memoryStorageHint')}</span>
           </span>
         </label>
-        {error && <p className="text-sm text-danger">{error}</p>}
+        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <button disabled={!canSubmit} className="w-full rounded-lg bg-ink px-3 py-2 text-sm font-medium text-canvas disabled:opacity-40">
           {busy ? t('publish.publishing') : t('publish.submit')}
         </button>

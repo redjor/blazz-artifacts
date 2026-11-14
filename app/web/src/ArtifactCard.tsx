@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { formatCount, formatDate, formatDay, formatViews, kindLabel, relativeDate, visibilityLabel, visibilityShort } from './format.ts';
+import { artifactOpenLabel, formatCount, formatDate, formatDay, formatViews, kindLabel, relativeDate, visibilityLabel, visibilityShort } from './format.ts';
 import { t } from './i18n/index.ts';
 import { CheckIcon, ChevronDownIcon, CopyIcon, FolderIcon, KIND_ICON, MoreIcon, OpenIcon, PinIcon, PlusIcon, ShareIcon, SlidersIcon, VISIBILITY_ICON } from './icons.tsx';
 import { Popover } from './Popover.tsx';
@@ -204,7 +204,7 @@ export function ArtifactCard({ a, tabbable, onFocusCard, ...actions }: CardActio
     <li className={`group relative min-w-0 ${menuOpen ? 'z-20' : ''}`}>
       <button type="button" data-static data-card={a.id} tabIndex={tabbable ? 0 : -1} onFocus={onFocusCard} onClick={actions.onPreview}
         draggable onDragStart={(e) => { e.dataTransfer.setData(CARD_DRAG_TYPE, a.id); e.dataTransfer.effectAllowed = 'move'; }}
-        aria-label={t('card.openLabel', { title: a.title, version: a.version ? t('card.versionPart', { n: a.version.number }) : '', pinned: a.pinned ? t('card.pinnedPart') : '' })}
+        aria-label={artifactOpenLabel(a)}
         aria-keyshortcuts="E"
         className="card block w-full overflow-hidden rounded-2xl border border-line bg-surface text-left transition-[border-color] hover:border-line-strong">
         <span className="relative block">

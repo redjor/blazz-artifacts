@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ancestorsOf, childrenOf, descendantsOf, folderPath, moveTargets, sharedVia, subtreeExposure, treeOptions, type TreeFolder } from '../web/src/folderTree.ts';
+import { ancestorsOf, childrenOf, descendantsOf, folderPath, moveTargets, sharedVia, subtreeExposure, survivingParent, treeOptions, type TreeFolder } from '../web/src/folderTree.ts';
 
 const f = (name: string, parent: string | null, o: Partial<TreeFolder> = {}): TreeFolder =>
   ({ name, parent, title: null, visibility: 'private', count: 0, privateCount: 0, position: null, ...o });
@@ -32,4 +32,14 @@ test('move targets exclude self, descendants and too-deep parents', () => {
   assert.deepEqual(names('b'), ['(root)', 'a', 'e'], 'b has 3 levels: only level-1 parents fit');
   assert.deepEqual(names('e'), ['(root)', 'a', 'b2', 'b', 'c']);
   assert.ok(!names('e').includes('d'), 'level 4 cannot take children');
+});
+
+test('surviving parent of a vanished folder', () => {
+  const without = (...gone: string[]) => FOLDERS.filter((x) => !gone.includes(x.name));
+  assert.equal(survivingParent(FOLDERS, without('c'), 'c'), 'b', 'deleted folder: its parent');
+  assert.equal(survivingParent(FOLDERS, without('c', 'b'), 'c'), 'a', 'parent gone too: the next ancestor');
+  assert.equal(survivingParent(FOLDERS, without('e'), 'e'), null, 'top-level folder: the root');
+  assert.equal(survivingParent(FOLDERS, without('x'), 'x'), null, 'unknown folder: the root');
+  const loop = [f('p', 'q'), f('q', 'p')];
+  assert.equal(survivingParent(loop, [], 'p'), null, 'a malformed list does not loop');
 });

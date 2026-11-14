@@ -1,5 +1,5 @@
 import { getLocale, t, tn } from './i18n/index.ts';
-import type { Kind, Visibility } from './types.ts';
+import type { ArtifactDto, Kind, Visibility } from './types.ts';
 
 export const kindLabel = (k: Kind) => t(`kind.${k}`);
 export const visibilityLabel = (v: Visibility) => t(`visibility.${v}`);
@@ -22,8 +22,8 @@ export const kindTileLabel = (k: Kind) => t(`kindTile.${k}`);
 export const ACCEPT_ALL = '.html,.htm,.md,.markdown,.pdf,.json,.zip';
 
 // Formatters follow the active locale; cached per locale.
-const cache = new Map<string, Intl.DateTimeFormat | Intl.NumberFormat>();
-function fmt<T extends Intl.DateTimeFormat | Intl.NumberFormat>(name: string, make: (locale: string) => T): T {
+const cache = new Map<string, Intl.DateTimeFormat | Intl.NumberFormat | Intl.Collator>();
+function fmt<T extends Intl.DateTimeFormat | Intl.NumberFormat | Intl.Collator>(name: string, make: (locale: string) => T): T {
   const key = `${getLocale()}:${name}`;
   let f = cache.get(key) as T | undefined;
   if (!f) {
@@ -86,8 +86,22 @@ export function formatBytes(n: number): string {
 
 export const stripExtension = (name: string) => name.replace(/\.[^.]+$/, '') || name;
 
+// localeCompare with options builds a collator on every call: the title sort reuses one.
+const collator = () => fmt('collator', (l) => new Intl.Collator(l, { sensitivity: 'base', numeric: true }));
+
 /** Locale-aware, case-insensitive, numeric comparison of titles. */
-export const compareText = (a: string, b: string) => a.localeCompare(b, getLocale(), { sensitivity: 'base', numeric: true });
+export const compareText = (a: string, b: string) => collator().compare(a, b);
+
+/** Accessible name of an artifact card: title, version, pin, then who can see it (own visibility, shared folder). */
+export function artifactOpenLabel(a: ArtifactDto, withVersion = true): string {
+  const viaFolder = a.project && a.folderVisibility && a.folderVisibility !== 'private' ? t('card.viaFolderPart', { folder: a.project }) : '';
+  return t('card.openLabel', {
+    title: a.title,
+    version: withVersion && a.version ? t('card.versionPart', { n: a.version.number }) : '',
+    pinned: a.pinned ? t('card.pinnedPart') : '',
+    access: visibilityLabel(a.visibility).toLowerCase() + viaFolder,
+  });
+}
 
 const RESERVED = new Set(['share', 'assets', 'api', 'admin', 'hub', 'unlock']);
 

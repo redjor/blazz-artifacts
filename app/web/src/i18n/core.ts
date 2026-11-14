@@ -14,6 +14,15 @@ export function detectLocale(saved: string | null | undefined, browser: string |
   return browser?.toLowerCase().startsWith('fr') ? 'fr' : 'en';
 }
 
+// One PluralRules per locale: building one costs far more than select(), and tn() runs for every card.
+const pluralRules = new Map<Locale, Intl.PluralRules>();
+
 /** CLDR plural category reduced to the two forms the dictionaries carry. */
-export const pluralForm = (locale: Locale, n: number): 'one' | 'other' =>
-  new Intl.PluralRules(locale).select(n) === 'one' ? 'one' : 'other';
+export function pluralForm(locale: Locale, n: number): 'one' | 'other' {
+  let rules = pluralRules.get(locale);
+  if (!rules) {
+    rules = new Intl.PluralRules(locale);
+    pluralRules.set(locale, rules);
+  }
+  return rules.select(n) === 'one' ? 'one' : 'other';
+}

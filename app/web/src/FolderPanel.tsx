@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useId, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { api, copyDeferred, copyText, openFolderPreview } from './api.ts';
+import { api, copyText, openFolderPreview } from './api.ts';
 import { ThumbImage, useThumbnail } from './ArtifactCard.tsx';
 import { EMPTY_LINK, field, ghost, iconButton, LinkCreateForm, linkExpiresAt, LinkRow, primary, RevivedLinksNote, Section, type LinkForm } from './ArtifactPanel.tsx';
 import { Audience } from './Audience.tsx';
+import { confirmExposure, copyFolderLink, shareFolderFor7Days } from './folderLinks.ts';
 import { formatDate, kindLabel, modifiedText, normalizeLabel, visibilityLabel } from './format.ts';
 import { childrenOf, folderPath, moveTargets, sharedVia, subtreeExposure, type TreeFolder } from './folderTree.ts';
 import { t, tn, type MessageKey } from './i18n/index.ts';
@@ -23,20 +24,6 @@ interface InfoDraft { title: string; description: string; name: string }
 interface AccessDraft { visibility: Visibility; code: string }
 
 const infoOf = (f: FolderDetail): InfoDraft => ({ title: f.title ?? '', description: f.description ?? '', name: f.name });
-
-/** Safeguard: number of private artifacts that would become visible through the folder when switching to `next`. */
-export function confirmExposure(f: Pick<FolderDetail, 'name' | 'visibility' | 'privateCount'>, next: Visibility, tree: TreeFolder[] = []): boolean {
-  if (next === 'private' || f.visibility !== 'private') return true;
-  const sub = subtreeExposure(tree, f.name);
-  const privateCount = Math.max(f.privateCount, sub.privateArtifacts);
-  if (privateCount === 0 && sub.folders === 0) return true;
-  const extra = sub.folders > 0 ? tn('exposure.subtree', sub.folders) : '';
-  const how = t(`exposure.${next}`);
-  const body = privateCount === 0
-    ? tn('exposure.confirmFolders', sub.folders, { name: f.name, how })
-    : tn('exposure.confirm', privateCount, { name: f.name, how });
-  return window.confirm(`${body}${extra}\n\n${t('confirm.continue')}`);
-}
 
 /** Delete confirmation suffix: the sub-folders of `name` move up one level (empty when there are none). */
 export function deleteChildrenNote(tree: TreeFolder[], name: string, parent: string | null): string {
@@ -317,34 +304,25 @@ export function FolderDrawer({ name, summary, folders, initialTab = 'info', onCl
   const priv = f.visibility === 'private';
   const displayTitle = f.title ?? f.name;
 
-  /** Share for 7 days: private-artifact safeguard, confirmation when visitors lose access, link created and copied. */
+  /** Share for 7 days (rules in folderLinks.ts); the panel shows the new state without waiting for the reload. */
   const share = async () => {
-    if (!confirmExposure(f, 'link', folders)) return;
-    if ((f.visibility === 'public' || f.visibility === 'code') && !window.confirm(t('confirm.folderToLink'))) return;
     setError(null);
-    const req = api.shareFolder(f.name, { hours: 168 });
-    const copied = copyDeferred(req.then((r) => {
-      if (!r.link.url) throw new Error(t('common.unreadableLink'));
-      return r.link.url;
-    })).then(() => true, () => false);
+    let res: Awaited<ReturnType<typeof shareFolderFor7Days>>;
     try {
-      setFolder((await req).project);
+      res = await shareFolderFor7Days(f, folders);
     } catch (e) {
       setError((e as Error).message);
       return;
     }
-    onNotice((await copied) ? t('notice.folderLinkCopied7') : t('notice.link7NoCopy'));
+    if (!res) return;
+    setFolder(res.project);
+    onNotice(res.copied ? t('notice.folderLinkCopied7') : t('notice.link7NoCopy'));
     onChanged();
     await refresh().catch(() => {});
   };
 
   const copyLink = async () => {
-    const copy = (url: string, ok: string) => copyText(url).then(() => onNotice(ok), () => onNotice(t('common.copyFailed')));
-    if (priv) return onNotice(t('folder.privateHint'));
-    if (f.visibility === 'public') return copy(f.url, t('notice.folderAddressCopied'));
-    if (f.visibility === 'code') return copy(f.url, t('notice.addressCopiedCode'));
-    if (f.activeLinkUrl) return copy(f.activeLinkUrl, t('notice.folderLinkCopied'));
-    if (window.confirm(t('confirm.noActiveFolderLink'))) await share();
+    if (await copyFolderLink(f, onNotice)) await share();
   };
 
   const saveInfo = (e: FormEvent) => {

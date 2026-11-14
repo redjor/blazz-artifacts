@@ -87,3 +87,13 @@ export function folderPath(folders: TreeFolder[], name: string): string {
   const self = folders.find((x) => x.name === name);
   return [...ancestorsOf(folders, name), ...(self ? [self] : [])].map(label).join(' / ');
 }
+
+/** Nearest ancestor of a vanished folder that still exists (null: the root), read from the folder list before the change. */
+export function survivingParent(before: { name: string | null; parent: string | null }[], after: { name: string | null }[], name: string): string | null {
+  const parentOf = new Map(before.map((f) => [f.name, f.parent]));
+  const alive = new Set(after.map((f) => f.name));
+  let parent = parentOf.get(name) ?? null;
+  // Bounded walk: the tree is at most a few levels deep, and a malformed list must not loop.
+  for (let i = 0; i < before.length && parent !== null && !alive.has(parent); i++) parent = parentOf.get(parent) ?? null;
+  return parent !== null && alive.has(parent) ? parent : null;
+}

@@ -86,21 +86,42 @@ function ThumbnailSection({ view, pending, onPick }: { view: ArtifactDto; pendin
   );
 }
 
-function History({ art, onRestore, onError }: { art: ArtifactDetail; onRestore: (v: VersionDto) => void; onError: (m: string) => void }) {
+/** A section whose data failed to load: short message and a retry (the panel's alert carries the error itself). */
+function LoadFailed({ onRetry }: { onRetry: () => void }) {
+  return (
+    <p className="flex flex-wrap items-center gap-3 text-sm text-muted">
+      {t('common.loadFailed')}
+      <button type="button" className={ghost} onClick={onRetry}>{t('common.retry')}</button>
+    </p>
+  );
+}
+
+function History({ art, onRestore, onError }: { art: ArtifactDetail; onRestore: (v: VersionDto) => void; onError: (m: string | null) => void }) {
   const [versions, setVersions] = useState<VersionDto[] | null>(null);
   const [all, setAll] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   // thumbnailUrl: a manual thumbnail upload does not change updatedAt, but the history must show it.
   const { id, updatedAt, thumbnailUrl } = art;
 
   useEffect(() => {
     let live = true;
-    api.versions(id).then((v) => live && setVersions(v), (e) => onError((e as Error).message));
+    // `live` on both paths: after a quick ↑/↓, the previous artifact's answer (or error) must not land on this one.
+    api.versions(id).then((v) => live && setVersions(v), (e) => {
+      if (!live) return;
+      setFailed(true);
+      onError((e as Error).message);
+    });
     return () => {
       live = false;
     };
-  }, [id, updatedAt, thumbnailUrl, onError]);
+  }, [id, updatedAt, thumbnailUrl, onError, attempt]);
 
-  if (!versions) return <p className="text-sm text-muted">{t('history.loading')}</p>;
+  if (!versions) {
+    return failed
+      ? <LoadFailed onRetry={() => { setFailed(false); onError(null); setAttempt((n) => n + 1); }} />
+      : <p className="text-sm text-muted">{t('history.loading')}</p>;
+  }
   const shown = all ? versions : versions.slice(0, HISTORY_SHORT);
   const withThumbs = versions.some((v) => v.thumbnailUrl);
   return (
@@ -183,11 +204,15 @@ export interface LinkActions {
  * Side panel of an artifact (full screen on mobile): header with actions, three tabs, ↑/↓ navigation
  * in the gallery's current order. Each tab keeps its draft: saving one does not clear the other.
  */
-export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, links, dirtyRef, onNavigate, onClose, onChanged, onNotice, restoreFocus }: {
+export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, links, dirtyRef, confirmMove, onNavigate, onClose, onChanged, onDeleted, onNotice, restoreFocus }: {
   id: string; summary: ArtifactDto | undefined; order: string[]; projects: string[]; paths?: Record<string, string>; tagNames: string[]; links: LinkActions;
-  /** Read by the gallery to confirm before a hash navigation. */
+  /** Read by the gallery to confirm before a Back/Forward navigation. */
   dirtyRef: RefObject<boolean>;
+  /** The gallery's safeguard before a folder change (moving into a shared folder): false when the owner declines. */
+  confirmMove: (a: ArtifactDto, to: string | null) => boolean;
   onNavigate: (id: string) => void; onClose: () => void; onChanged: () => unknown; onNotice: (m: string) => void;
+  /** After a deletion: the gallery reloads; the panel then closes itself. */
+  onDeleted: () => unknown;
   restoreFocus: () => HTMLElement | null;
 }) {
   const [tab, setTab] = useState<TabId>('info');
@@ -200,6 +225,8 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [historySeen, setHistorySeen] = useState(false);
+  // The artifact itself failed to load: the links and history sections offer a retry instead of loading forever.
+  const [loadFailed, setLoadFailed] = useState(false);
   const layer = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const header = useRef<HTMLElement>(null);
@@ -219,6 +246,7 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
     setLinkForm(EMPTY_LINK);
     setError(null);
     setPending(null);
+    setLoadFailed(false);
   }
   if (tab === 'history' && !historySeen) setHistorySeen(true);
 
@@ -229,11 +257,24 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
     if (currentId.current === id) setArt(a);
     return a;
   }, [id]);
+  const retryLoad = () => {
+    setLoadFailed(false);
+    setError(null);
+    refresh().catch((e) => {
+      if (currentId.current !== id) return;
+      setError((e as Error).message);
+      setLoadFailed(true);
+    });
+  };
 
   useEffect(() => {
     currentId.current = id;
     let live = true;
-    api.get(id).then((a) => live && setArt(a), (e) => live && setError((e as Error).message));
+    api.get(id).then((a) => live && setArt(a), (e) => {
+      if (!live) return;
+      setError((e as Error).message);
+      setLoadFailed(true);
+    });
     // Focus was on an element gone with the previous artifact: move it to the open tab.
     if (panel.current && !panel.current.contains(document.activeElement)) tabRefs.current[tab]?.focus({ preventScroll: true });
     return () => {
@@ -352,7 +393,10 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
     e.preventDefault();
     if (!info) return;
     if (info.slug !== view.slug && !window.confirm(t('confirm.slugChange', { slug: view.slug }))) return;
-    void act('info', () => api.update(view.id, { title: info.title, slug: info.slug, project: normalizeLabel(info.project), tags: info.tags }), t('notice.infoSaved'), () => setInfo(null));
+    const project = normalizeLabel(info.project);
+    // Same safeguard as “Move to…” and drag and drop: into a shared folder, the artifact becomes visible there.
+    if (project !== view.project && !confirmMove(view, project)) return;
+    void act('info', () => api.update(view.id, { title: info.title, slug: info.slug, project, tags: info.tags }), t('notice.infoSaved'), () => setInfo(null));
   };
 
   const saveAccess = (e: FormEvent) => {
@@ -394,8 +438,9 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
     if (!window.confirm(t('confirm.deleteArtifact', { title: view.title }))) return;
     try {
       await api.remove(view.id);
-      // Gallery reloaded before closing: focus can then go to a neighbouring card that exists.
-      await Promise.resolve(onChanged()).catch(() => {});
+      // Gallery reloaded before closing: focus can then go to a neighbouring card that exists. The panel closes
+      // itself (exit animation, Back undoes the entry its opening pushed) rather than vanishing with the reload.
+      await Promise.resolve(onDeleted()).catch(() => {});
       onNotice(t('notice.artifactDeleted'));
       requestClose(true);
     } catch (e) {
@@ -580,7 +625,7 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
                 <>
                   <LinkCreateForm form={linkForm} onChange={setLinkForm} onSubmit={createLink} pending={pending === 'link'} />
                   {!detail ? (
-                    <p className="text-sm text-muted">{t('links.loading')}</p>
+                    loadFailed ? <LoadFailed onRetry={retryLoad} /> : <p className="text-sm text-muted">{t('links.loading')}</p>
                   ) : (
                     <ul className="space-y-2">
                       {detail.links.map((l) => <LinkRow key={l.id} l={l} current={l.url !== null && l.url === detail.activeLinkUrl} onCopy={() => copyText(l.url!).then(() => onNotice(t('common.linkCopied')), () => onNotice(t('common.copyFailed')))} onRevoke={() => void act('revoke', () => api.revokeLink(view.id, l.id), t('common.linkRevoked'))} />)}
@@ -605,7 +650,8 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
 
           {/* History */}
           <div role="tabpanel" id={`${baseId}-panel-history`} aria-labelledby={`${baseId}-tab-history`} hidden={tab !== 'history'} className="px-5 py-6 sm:px-7">
-            {historySeen && detail ? <History art={detail} onRestore={restore} onError={setError} /> : <p className="text-sm text-muted">{t('history.loading')}</p>}
+            {historySeen && detail ? <History art={detail} onRestore={restore} onError={setError} />
+              : loadFailed ? <LoadFailed onRetry={retryLoad} /> : <p className="text-sm text-muted">{t('history.loading')}</p>}
           </div>
         </div>
       </div>

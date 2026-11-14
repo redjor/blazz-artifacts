@@ -35,7 +35,7 @@ export function Login({ onDone }: { onDone: () => void }) {
           <input type="password" autoFocus required value={password} onChange={(e) => setPassword(e.target.value)}
             className="w-full rounded-lg border border-line bg-transparent px-3 py-2 hover:border-line-strong" />
         </label>
-        {error && <p className="text-sm text-danger">{error}</p>}
+        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <button disabled={busy} className="w-full rounded-lg bg-ink px-3 py-2 text-sm font-medium text-canvas disabled:opacity-50">
           {busy ? t('login.submitting') : t('login.submit')}
         </button>
