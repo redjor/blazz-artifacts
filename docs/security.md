@@ -74,7 +74,7 @@ artifacts or moving a non-public artifact into a shared folder.
 
 ### Sub-folders
 
-Folders nest up to 4 levels, and access is always inherited: a visitor reaches folder F if F or any ancestor grants access, each checked with its own cookie and epoch; the highest granting folder wins. A private child is reachable through its parent. `/d/<F>/a/<slug>` serves direct members of F only. The breadcrumb starts at the highest ancestor the visitor can access, and the unlock page only names the requested folder, never its parent. Thumbnail signatures are bound to the granting folder and the displayed folder (the granting folder is re-checked as a current ancestor). Moving a folder out of a parent, or deleting the parent, cuts inherited access immediately; page-issued thumbnail signatures can remain valid for up to 1 hour.
+Folders nest up to 4 levels, and access is always inherited: a visitor reaches folder F if F or any ancestor grants access, each checked with its own cookie and epoch; the highest granting folder wins. A private child is reachable through its parent. `/d/<F>/a/<slug>` serves direct members of F only. The breadcrumb starts at the highest ancestor the visitor can access, and the unlock page only names the requested folder, never its parent. Thumbnail signatures are bound to the granting folder and the displayed folder (the granting folder is re-checked as a current ancestor). Moving a folder out of a parent, or deleting the parent, cuts inherited access immediately for new openings (thumbnails are refused at once); an already-issued signed artifact path stays valid for up to 1 hour.
 
 ## Admin
 

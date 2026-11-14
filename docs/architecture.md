@@ -19,9 +19,14 @@ One Node 24 process runs two independent [Hono](https://hono.dev) apps:
 
 - **admin** (`src/admin/`): the JSON API under `/api` and the built React SPA (`web/dist`). Strict CSP
   `default-src 'self'; img-src 'self' data:; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`.
-- **folder tree** (`src/folder-tree.ts`): pure helpers for nesting (max depth `MAX_FOLDER_DEPTH = 4`): ancestors, children, re-parent checks, children order. Deleting a sheet re-parents its direct children to its parent.
 - **content** (`src/content/`): artifact files, unlock forms, share-link exchange, folder pages and folder
   thumbnails. It imports no admin route. Separation relies on ports and networks, never on the `Host` header.
+
+Folders nest up to `MAX_FOLDER_DEPTH = 4` levels. `src/folder-tree.ts` holds the pure helpers (ancestors, children,
+re-parent checks, children order). Effective folder access (`effectiveFolderAccess`, `src/content/folder-grant.ts`)
+returns the granting folder, the folder or the highest ancestor whose own access is valid; folder pages, folder
+artifact redirects, thumbnails and the breadcrumb all use it. Deleting a folder sheet re-parents its direct children
+to its parent.
 
 Server stack: TypeScript executed directly by Node (type stripping, no server build step), `node:sqlite`
 (no native dependency; still marked experimental, hence the pinned Node version in the image), `node:crypto`
@@ -51,7 +56,8 @@ data/
 
 Main tables: `artifacts` (slug, title, kind, visibility, code hash, access epoch, current version, folder, pin,
 folder position), `versions` (number, kind, entry path, size, thumbnail), `artifact_tags`, `projects` (folder sheets:
-title, description, visibility, code hash, epoch, salt, `parent_name` (FK, ON UPDATE CASCADE) and `position` for sub-folders), `share_links` (artifact **or** folder target, token hash +
+title, description, visibility, code hash, epoch, salt, `parent_name` (FK, ON UPDATE CASCADE), `position`),
+`share_links` (artifact **or** folder target, token hash +
 encrypted token, expiry, revocation, open count), `visit_days` / `folder_visit_days` (daily aggregates),
 `visit_seen` (fingerprints, two days max), `admin_sessions`. Migrations run in place at startup, idempotent, in one
 transaction (`src/db.ts`).
