@@ -45,6 +45,10 @@ export interface VersionDto {
 /** Folder summary: artifact count, private count, folder visibility. `name: null` = no folder. */
 export interface FolderSummary {
   name: string | null; count: number; privateCount: number; visibility: Visibility; title: string | null;
+  /** Parent folder name (null at root) and position among its siblings. */
+  parent: string | null; position: number | null;
+  /** Direct sub-folders. */
+  childCount: number;
   /** Latest activity: folder sheet or most recent artifact (null: nothing). */
   latestUpdatedAt: string | null;
   /** Up to 4 artifacts, newest first: the folder card mosaic. */
@@ -68,4 +72,10 @@ export interface FolderDetail {
   /** In visitor page order. */
   artifacts: FolderArtifact[];
   links: LinkDto[];
+  /** Parent folder name (null at root). */
+  parent: string | null;
+  /** Ancestors, root first, without this folder. */
+  ancestors: { name: string; title: string | null }[];
+  /** Direct sub-folders in visitor order. */
+  children: { name: string; title: string | null; visibility: Visibility; count: number }[];
 }

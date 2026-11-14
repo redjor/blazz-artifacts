@@ -76,10 +76,11 @@ export const api = {
   putThumbnail: (id: string, versionId: string, image: Blob) =>
     request<{ thumbnailUrl: string }>('PUT', `/artifacts/${seg(id)}/versions/${seg(versionId)}/thumbnail`, image),
   restore: (id: string, versionId: string) => request<ArtifactDto>('POST', `/artifacts/${seg(id)}/versions/${seg(versionId)}/restore`),
-  createFolder: (body: { name: string; title?: string; description?: string }) => request<FolderDetail>('POST', '/projects', body),
+  createFolder: (body: { name: string; title?: string; description?: string; parent?: string | null }) => request<FolderDetail>('POST', '/projects', body),
   folder: (name: string) => request<FolderDetail>('GET', `/projects/${seg(name)}`),
-  updateFolder: (name: string, patch: { title?: string | null; description?: string | null; visibility?: Visibility; code?: string; name?: string }) =>
+  updateFolder: (name: string, patch: { title?: string | null; description?: string | null; visibility?: Visibility; code?: string; name?: string; parent?: string | null }) =>
     request<FolderDetail>('PATCH', `/projects/${seg(name)}`, patch),
+  orderFolderChildren: (name: string, names: string[]) => request<FolderDetail>('PUT', `/projects/${seg(name)}/children-order`, { names }),
   shareFolder: (name: string, body: { hours?: number; label?: string }) =>
     request<{ project: FolderDetail; link: LinkDto }>('POST', `/projects/${seg(name)}/share`, body),
   revokeAllFolder: (name: string) => request<FolderDetail>('POST', `/projects/${seg(name)}/revoke-all`),
@@ -89,7 +90,7 @@ export const api = {
   revokeFolderLink: (name: string, linkId: string) => request<{ ok: true }>('DELETE', `/projects/${seg(name)}/links/${seg(linkId)}`),
   folderStats: (name: string, days = 30) => request<StatsDto>('GET', `/projects/${seg(name)}/stats?days=${days}`),
   folderPreview: (name: string) => request<{ url: string }>('GET', `/projects/${seg(name)}/preview`),
-  deleteFolder: (name: string) => request<{ ok: true }>('DELETE', `/projects/${seg(name)}`),
+  deleteFolder: (name: string) => request<{ ok: true; movedChildren: number }>('DELETE', `/projects/${seg(name)}`),
   slug: (slug: string) => request<{ slug: string; valid: boolean; available: boolean }>('GET', `/slugs/${encodeURIComponent(slug)}`),
 };
 
