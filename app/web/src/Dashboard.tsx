@@ -12,7 +12,7 @@ import { readHash, writeHash } from './hash.ts';
 import { CheckIcon, ChevronRightIcon, CloseIcon, FilterIcon, FolderIcon, FolderPlusIcon, GridIcon, KIND_ICON, KeyboardIcon, ListIcon, LogoutIcon, PinIcon, SearchIcon, SortIcon, UploadIcon, VISIBILITY_ICON } from './icons.tsx';
 import { hasOpenLayer, isEditable } from './layers.ts';
 import { Popover, type PopoverHandle } from './Popover.tsx';
-import { ancestorsOf, childrenOf, folderPath, treeOptions } from './folderTree.ts';
+import { ancestorsOf, childrenOf, folderPath, sharedVia, treeOptions } from './folderTree.ts';
 import { FolderBreadcrumb } from './FolderBreadcrumb.tsx';
 import { NewFolderDialog } from './NewFolderDialog.tsx';
 import { PublishDialog } from './PublishDialog.tsx';
@@ -234,6 +234,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const tabbableId = focusId && order.includes(focusId) ? focusId : order[0];
 
   const projectNames = treeOptions(namedFolders).map((o) => o.folder.name);
+  const sharedViaTitleOf = (f: NamedFolder) => { const v = f.visibility === 'private' ? sharedVia(namedFolders, f.name) : null; return v ? (v.title ?? v.name) : undefined; };
   const folderPaths = Object.fromEntries(namedFolders.map((f) => [f.name, folderPath(namedFolders, f.name)]));
   const currentFolder = project && project !== NONE ? projects.find((p) => p.name === project) ?? null : null;
   const FolderVisIcon = currentFolder && currentFolder.visibility !== 'private' ? VISIBILITY_ICON[currentFolder.visibility] : null;
@@ -412,7 +413,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   };
 
   const shareFolder = async (f: NamedFolder): Promise<void> => {
-    if (!confirmExposure(f, 'link')) return;
+    if (!confirmExposure(f, 'link', namedFolders)) return;
     if ((f.visibility === 'public' || f.visibility === 'code') && !window.confirm(t('confirm.folderToLink'))) return;
     const req = api.shareFolder(f.name, { hours: 168 });
     const copied = copyDeferred(req.then((r) => {
@@ -743,7 +744,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
               className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 lg:gap-x-8 lg:gap-y-8">
               {folderCards.map((f) => {
                 const card = folderKey(f.name);
-                return <FolderCard key={card} f={f} tabbable={card === tabbableId} onFocusCard={() => setFocusId(card)} {...folderActionsFor(f)} />;
+                return <FolderCard key={card} f={f} tabbable={card === tabbableId} onFocusCard={() => setFocusId(card)} sharedViaTitle={sharedViaTitleOf(f)} {...folderActionsFor(f)} />;
               })}
               {visible.map((a) => <ArtifactCard key={a.id} a={a} tabbable={a.id === tabbableId} onFocusCard={() => setFocusId(a.id)} {...actionsFor(a)} />)}
             </ul>
@@ -751,7 +752,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
             <ul ref={list} onKeyDown={onListKey} className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
               {folderCards.map((f) => {
                 const card = folderKey(f.name);
-                return <FolderRow key={card} f={f} tabbable={card === tabbableId} onFocusCard={() => setFocusId(card)} {...folderActionsFor(f)} />;
+                return <FolderRow key={card} f={f} tabbable={card === tabbableId} onFocusCard={() => setFocusId(card)} sharedViaTitle={sharedViaTitleOf(f)} {...folderActionsFor(f)} />;
               })}
               {visible.map((a) => {
                 const Icon = KIND_ICON[a.kind];
@@ -812,7 +813,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       {newFolder && <NewFolderDialog existing={namedFolders.map((f) => f.name)} parent={inFolder} parentTitle={currentFolder?.title ?? undefined} onClose={() => setNewFolder(null)} onCreated={onFolderCreated} />}
       {pending && <PublishDialog key={`${pending.name}-${pending.lastModified}-${pending.size}`} file={pending} defaultProject={project && project !== NONE ? project : ''} projects={projectNames} paths={folderPaths} tags={tagCounts.map((t) => t.name)} onClose={() => setPending(null)} onPublished={reload} />}
       {loaded && folderOpen && !selected && (
-        <FolderDrawer key={folderOpen} name={folderOpen} summary={projects.find((p) => p.name === folderOpen)} onClose={() => setFolderOpen(null)}
+        <FolderDrawer key={folderOpen} name={folderOpen} folders={namedFolders} summary={projects.find((p) => p.name === folderOpen)} onClose={() => setFolderOpen(null)}
           onChanged={reload} onNotice={setNotice}
           fallbackFocus={() => list.current?.querySelector<HTMLElement>(`[data-card="${CSS.escape(folderKey(folderOpen))}"]`) ?? gallery.current}
           onRenamed={(n) => { setProject(n); setFolderOpen(n); }} />

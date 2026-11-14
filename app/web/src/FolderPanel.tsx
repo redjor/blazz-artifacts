@@ -5,6 +5,7 @@ import { ThumbImage, useThumbnail } from './ArtifactCard.tsx';
 import { EMPTY_LINK, field, ghost, iconButton, LinkCreateForm, linkExpiresAt, LinkRow, primary, RevivedLinksNote, Section, type LinkForm } from './ArtifactPanel.tsx';
 import { Audience } from './Audience.tsx';
 import { formatDate, kindLabel, modifiedText, normalizeLabel, visibilityLabel } from './format.ts';
+import { childrenOf, folderPath, moveTargets, sharedVia, subtreeExposure, type TreeFolder } from './folderTree.ts';
 import { t, tn, type MessageKey } from './i18n/index.ts';
 import { ArrowDownIcon, ArrowUpIcon, CheckIcon, CloseIcon, CopyIcon, FolderIcon, GripIcon, KIND_ICON, OpenIcon, ShareIcon, VISIBILITY_ICON } from './icons.tsx';
 import { useLayer } from './layers.ts';
@@ -24,9 +25,13 @@ interface AccessDraft { visibility: Visibility; code: string }
 const infoOf = (f: FolderDetail): InfoDraft => ({ title: f.title ?? '', description: f.description ?? '', name: f.name });
 
 /** Safeguard: number of private artifacts that would become visible through the folder when switching to `next`. */
-export function confirmExposure(f: Pick<FolderDetail, 'name' | 'visibility' | 'privateCount'>, next: Visibility): boolean {
-  if (next === 'private' || f.visibility !== 'private' || f.privateCount === 0) return true;
-  return window.confirm(tn('exposure.confirm', f.privateCount, { name: f.name, how: t(`exposure.${next}`) }));
+export function confirmExposure(f: Pick<FolderDetail, 'name' | 'visibility' | 'privateCount'>, next: Visibility, tree: TreeFolder[] = []): boolean {
+  if (next === 'private' || f.visibility !== 'private') return true;
+  const sub = subtreeExposure(tree, f.name);
+  const privateCount = Math.max(f.privateCount, sub.privateArtifacts);
+  if (privateCount === 0 && sub.folders === 0) return true;
+  const extra = sub.folders > 0 ? tn('exposure.subtree', sub.folders) : '';
+  return window.confirm(tn('exposure.confirm', privateCount, { name: f.name, how: t(`exposure.${next}`) }) + extra);
 }
 
 function RowThumb({ a }: { a: FolderArtifact }) {
@@ -183,8 +188,8 @@ function OrderList({ folder, onSave }: { folder: FolderDetail; onSave: (ids: str
  * “Folder” panel of a project: same drawer as artifacts. Title, description, visibility, links, audience,
  * card order, visitor page preview. The folder sheet is created on the first change.
  */
-export function FolderDrawer({ name, summary, onClose, onChanged, onNotice, onRenamed, fallbackFocus }: {
-  name: string; summary: FolderSummary | undefined; fallbackFocus?: () => HTMLElement | null;
+export function FolderDrawer({ name, summary, folders, onClose, onChanged, onNotice, onRenamed, fallbackFocus }: {
+  name: string; summary: FolderSummary | undefined; folders: TreeFolder[]; fallbackFocus?: () => HTMLElement | null;
   onClose: () => void; onChanged: () => unknown; onNotice: (m: string) => void; onRenamed: (name: string) => void;
 }) {
   const [tab, setTab] = useState<TabId>('info');
@@ -300,7 +305,7 @@ export function FolderDrawer({ name, summary, onClose, onChanged, onNotice, onRe
 
   /** Share for 7 days: private-artifact safeguard, confirmation when visitors lose access, link created and copied. */
   const share = async () => {
-    if (!confirmExposure(f, 'link')) return;
+    if (!confirmExposure(f, 'link', folders)) return;
     if ((f.visibility === 'public' || f.visibility === 'code') && !window.confirm(t('confirm.folderToLink'))) return;
     setError(null);
     const req = api.shareFolder(f.name, { hours: 168 });
@@ -347,7 +352,7 @@ export function FolderDrawer({ name, summary, onClose, onChanged, onNotice, onRe
 
   const saveAccess = (e: FormEvent) => {
     e.preventDefault();
-    if (!access || !confirmExposure(f, access.visibility)) return;
+    if (!access || !confirmExposure(f, access.visibility, folders)) return;
     void act('access', () => api.updateFolder(f.name, { visibility: access.visibility, ...(access.visibility === 'code' && access.code ? { code: access.code } : {}) }),
       t('notice.folderAccessUpdated'), () => setAccess(null));
   };
@@ -366,11 +371,31 @@ export function FolderDrawer({ name, summary, onClose, onChanged, onNotice, onRe
     });
   };
 
+  const labelOf = (x: TreeFolder) => x.title ?? x.name;
+  const via = sharedVia(folders, f.name);
+  /** The folder (itself or an ancestor) whose access opens `name`; null when nothing above is shared. */
+  const opener = (name: string | null): TreeFolder | null => {
+    const x = folders.find((o) => o.name === name);
+    return x ? (x.visibility !== 'private' ? x : sharedVia(folders, x.name)) : null;
+  };
+
+  const move = async (parent: string | null) => {
+    if (parent === f.parent) return;
+    const into = opener(parent);
+    const from = opener(f.parent);
+    if (into && !window.confirm(tn('move.confirmIn', subtreeExposure(folders, f.name).artifacts, { name: f.name, parent: labelOf(into) }))) return;
+    if (!into && from && !window.confirm(t('move.confirmOut', { name: f.name, parent: labelOf(from) }))) return;
+    await act('move', () => api.updateFolder(f.name, { parent }), null);
+  };
+
   const removeSheet = async () => {
     const empty = f.count === 0;
-    if (!window.confirm(empty
+    const kids = childrenOf(folders, f.name).length;
+    const parentFolder = folders.find((x) => x.name === f.parent);
+    const extra = kids > 0 ? tn('confirm.deleteChildren', kids, { target: parentFolder ? `“${labelOf(parentFolder)}”` : t('move.root') }) : '';
+    if (!window.confirm((empty
       ? t('confirm.deleteEmptyFolder', { title: f.name, name: f.name })
-      : t('confirm.deleteFolderSheet', { name: f.name }))) return;
+      : t('confirm.deleteFolderSheet', { name: f.name })) + extra)) return;
     try {
       await api.deleteFolder(f.name);
       await Promise.resolve(onChanged()).catch(() => {});
@@ -401,6 +426,7 @@ export function FolderDrawer({ name, summary, onClose, onChanged, onNotice, onRe
           <span className="inline-flex items-center gap-1.5"><FolderIcon className="size-3.5" /><span className="font-mono">/d/{f.name}</span></span>
           <span aria-hidden="true">·</span>
           <span className="inline-flex items-center gap-1.5"><VisIcon className="size-3.5" />{visibilityLabel(f.visibility)}</span>
+          {priv && via && <span>{t('tree.sharedVia', { title: labelOf(via) })}</span>}
           <span aria-hidden="true">·</span>
           <span className="tabular-nums">{tn('folder.count', f.count)}{f.privateCount > 0 && tn('folder.private', f.privateCount)}</span>
           {f.updatedAt && (
@@ -466,6 +492,16 @@ export function FolderDrawer({ name, summary, onClose, onChanged, onNotice, onRe
                     {nameInvalid ? t('common.charset') : t('folder.renameWarn', { n: f.count, name: f.name })}
                   </span>
                 )}
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="text-muted">{t('move.label')}</span>
+                <select className={field} value={f.parent ?? ''} disabled={pending === 'move'} onChange={(e) => void move(e.target.value === '' ? null : e.target.value)}>
+                  {moveTargets(folders, f.name).map(({ folder, depth }) => (
+                    <option key={folder?.name ?? ''} value={folder?.name ?? ''}>
+                      {folder ? `${'\u00a0\u00a0'.repeat(depth)}${folderPath(folders, folder.name)}` : t('move.root')}
+                    </option>
+                  ))}
+                </select>
               </label>
               <div className="flex flex-wrap gap-2">
                 <button className={primary} disabled={!infoDirty || nameInvalid || pending === 'info'}>{pending === 'info' ? t('common.saving') : t('common.save')}</button>

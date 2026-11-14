@@ -90,7 +90,7 @@ function Slot({ item }: { item: FolderSummary['recent'][number] | undefined }) {
 }
 
 /** Relative date, artifact count and shared visibility (icon + text, never for a private folder). */
-function FolderMeta({ f, className = '' }: { f: NamedFolder; className?: string }) {
+function FolderMeta({ f, sharedViaTitle, className = '' }: { f: NamedFolder; sharedViaTitle?: string; className?: string }) {
   const Vis = VISIBILITY_ICON[f.visibility];
   return (
     <span className={`flex min-w-0 items-center gap-1.5 text-[13px] leading-5 text-muted ${className}`}>
@@ -101,6 +101,12 @@ function FolderMeta({ f, className = '' }: { f: NamedFolder; className?: string 
         </>
       )}
       <span className="shrink-0 tabular-nums">{f.count === 0 && f.childCount === 0 ? t('folder.empty') : f.count === 0 ? tn('tree.subfolders', f.childCount) : <>{plural(f.count)}{f.childCount > 0 && <> · {tn('tree.subfolders', f.childCount)}</>}</>}</span>
+      {f.visibility === 'private' && sharedViaTitle && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span className="truncate">{t('tree.sharedVia', { title: sharedViaTitle })}</span>
+        </>
+      )}
       {f.visibility !== 'private' && (
         <>
           <span aria-hidden="true">·</span>
@@ -120,7 +126,7 @@ const openLabel = (f: NamedFolder) =>
     shared: f.visibility !== 'private' ? t('folder.sharedPart', { visibility: visibilityLabel(f.visibility).toLowerCase() }) : '',
   });
 
-export function FolderCard({ f, tabbable, onFocusCard, ...actions }: FolderActions & { f: NamedFolder; tabbable: boolean; onFocusCard: () => void }) {
+export function FolderCard({ f, sharedViaTitle, tabbable, onFocusCard, ...actions }: FolderActions & { f: NamedFolder; sharedViaTitle?: string; tabbable: boolean; onFocusCard: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { over, handlers } = useCardDrop(actions.onDropCard);
   const slots = [0, 1, 2, 3].map((i) => f.recent[i]);
@@ -136,7 +142,7 @@ export function FolderCard({ f, tabbable, onFocusCard, ...actions }: FolderActio
           <FolderFilledIcon className="folder-glyph size-7" />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[15px] leading-6">{f.title ?? f.name}</span>
-            <FolderMeta f={f} className="mt-0.5" />
+            <FolderMeta f={f} sharedViaTitle={sharedViaTitle} className="mt-0.5" />
           </span>
         </span>
       </button>
@@ -148,7 +154,7 @@ export function FolderCard({ f, tabbable, onFocusCard, ...actions }: FolderActio
   );
 }
 
-export function FolderRow({ f, tabbable, onFocusCard, ...actions }: FolderActions & { f: NamedFolder; tabbable: boolean; onFocusCard: () => void }) {
+export function FolderRow({ f, sharedViaTitle, tabbable, onFocusCard, ...actions }: FolderActions & { f: NamedFolder; sharedViaTitle?: string; tabbable: boolean; onFocusCard: () => void }) {
   const { over, handlers } = useCardDrop(actions.onDropCard);
   return (
     <li className={`flex items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4 ${over ? 'drop-over' : ''}`} {...handlers}>
@@ -157,7 +163,7 @@ export function FolderRow({ f, tabbable, onFocusCard, ...actions }: FolderAction
         <span className="folder-mosaic grid size-10 shrink-0 place-items-center rounded-lg"><FolderFilledIcon className="folder-glyph size-6" /></span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px]">{f.title ?? f.name}</span>
-          <FolderMeta f={f} />
+          <FolderMeta f={f} sharedViaTitle={sharedViaTitle} />
         </span>
         {f.title && <span className="hidden shrink-0 font-mono text-xs text-muted lg:block">/d/{f.name}</span>}
       </button>
