@@ -50,6 +50,19 @@ export function hasFolderAccess(db: Db, project: Project | undefined, c: FolderG
   return isFolderGrantValid(db, project, c, nowS);
 }
 
+/**
+ * Inherited folder access (design 03). `chain`: the folder then its ancestors, nearest first. Returns the highest
+ * (root-side) folder whose own access is valid for this visitor, or null. Each folder is checked with its own grant.
+ */
+export function effectiveFolderAccess(
+  db: Db, chain: Project[], grantOf: (name: string) => FolderGrantClaims | null, nowS: number,
+): Project | null {
+  for (let i = chain.length - 1; i >= 0; i--) {
+    if (hasFolderAccess(db, chain[i], grantOf(chain[i].name), nowS)) return chain[i];
+  }
+  return null;
+}
+
 // Thumbnail URL issued by the folder page (the sandboxed document has an opaque origin: its image requests
 // carry no SameSite cookies). Bound to the folder epoch and expires in 1 h, like an artifact signed path;
 // current membership and non-private visibility are re-checked on every request.

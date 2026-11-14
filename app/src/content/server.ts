@@ -18,7 +18,8 @@ import {
 import { thumbPath, versionDir } from '../storage.ts';
 import { THUMB_MIME } from '../thumbs.ts';
 import { createVisitRecorder, isBot } from '../visits.ts';
-import { checkFolderPreview, checkFolderThumb, decodeFolderGrant, encodeFolderGrant, folderCookieName, hasFolderAccess, signFolderThumb } from './folder-grant.ts';
+import { checkFolderPreview, checkFolderThumb, decodeFolderGrant, encodeFolderGrant, effectiveFolderAccess, folderCookieName, signFolderThumb } from './folder-grant.ts';
+import { ancestors } from '../folder-tree.ts';
 import { renderFolderPage } from './folder-page.ts';
 import { decodeGrant, encodeGrant, GRANT_TTL_S, grantCookieName, isGrantValid } from './grant.ts';
 import { PDF_CSP, SANDBOX_SCRIPTS, SANDBOX_STATIC } from './headers.ts';
@@ -187,8 +188,12 @@ export function createContentApp(deps: ContentDeps): Hono {
 
   const PROJECT_RE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
   const folderOf = (name: string): Project | undefined => (PROJECT_RE.test(name) ? getProject(db, name) : undefined);
-  const folderAccess = (c: Context, project: Project | undefined) =>
-    hasFolderAccess(db, project, decodeFolderGrant(keys.folderGrant, getCookie(c, folderCookieName(project?.name ?? ''))), nowS());
+  const chainOf = (p: Project): Project[] => [p, ...ancestors(db, p.name)];
+  /** Granting folder (the folder itself or an ancestor), or null. */
+  const folderAccess = (c: Context, project: Project | undefined): Project | null =>
+    project
+      ? effectiveFolderAccess(db, chainOf(project), (n) => decodeFolderGrant(keys.folderGrant, getCookie(c, folderCookieName(n))), nowS())
+      : null;
   // Without access: unlock form for a “code” folder, 404 for everything else (private, link, missing).
   const denyFolder = (c: Context, project: Project | undefined) =>
     project?.visibility === 'code' && project.code_hash
