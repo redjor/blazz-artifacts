@@ -31,7 +31,11 @@ export function confirmExposure(f: Pick<FolderDetail, 'name' | 'visibility' | 'p
   const privateCount = Math.max(f.privateCount, sub.privateArtifacts);
   if (privateCount === 0 && sub.folders === 0) return true;
   const extra = sub.folders > 0 ? tn('exposure.subtree', sub.folders) : '';
-  return window.confirm(tn('exposure.confirm', privateCount, { name: f.name, how: t(`exposure.${next}`) }) + extra);
+  const how = t(`exposure.${next}`);
+  const body = privateCount === 0
+    ? tn('exposure.confirmFolders', sub.folders, { name: f.name, how })
+    : tn('exposure.confirm', privateCount, { name: f.name, how });
+  return window.confirm(`${body}${extra}\n\n${t('confirm.continue')}`);
 }
 
 /** Delete confirmation suffix: the sub-folders of `name` move up one level (empty when there are none). */
@@ -397,7 +401,7 @@ export function FolderDrawer({ name, summary, folders, initialTab = 'info', onCl
       const sub = subtreeExposure(folders, f.name);
       // Leaving the access of `from` (to the top level or to another shared tree): its visitors lose access.
       if (from && !window.confirm(t('move.confirmOut', { name: f.name, parent: labelOf(from) }))) return;
-      if (into && !window.confirm(tn('move.confirmIn', sub.artifacts, { name: f.name, parent: labelOf(into) }) + (sub.folders > 0 ? tn('exposure.subtree', sub.folders) : ''))) return;
+      if (into && !window.confirm(`${tn('move.confirmIn', sub.artifacts, { name: f.name, parent: labelOf(into) })}${sub.folders > 0 ? tn('exposure.subtree', sub.folders) : ''}\n\n${t('confirm.continue')}`)) return;
     }
     await act('move', () => api.updateFolder(f.name, { parent }), null);
   };
