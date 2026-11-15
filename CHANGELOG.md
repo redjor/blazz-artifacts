@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Development: `npm run dev` restarts the API and content servers when the server code changes (Vite stays up), so
+  the hot-reloaded admin UI never calls an older API. The gallery also loads when only the trash fails to load.
 - Bulk actions: select artifacts (check on hover, “Select” in the card menu, `X`, `Ctrl/Cmd+A`) and move, tag,
   change the visibility, pin or trash them in one all-or-nothing request (`POST /api/artifacts/bulk`). Moving into a
   shared folder and making artifacts public ask one confirmation; a bulk trash has one undo for the whole batch.

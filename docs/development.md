@@ -12,7 +12,7 @@ app/
     errors.ts     API error codes   i18n.ts  visitor page copy
   web/src/        React admin SPA (i18n/ holds the en and fr dictionaries)
   test/           node:test suites (server, i18n dictionaries)
-  dev/            local runner and demo seed files
+  dev/            local runner (run.ts, which watches api.ts) and demo seed files
 cli/publish-artifact/   Python publish CLI, Claude Code skill, unit tests
 deploy/                 compose files, Tailscale serve configs, Caddy example, .env.example
 scripts/                backup.sh, check-compose.sh
@@ -32,7 +32,8 @@ HUB_LOCALE=fr npm run dev   # French visitor pages
 Sign in with `blazz-artifacts-dev` (or `DEV_PASSWORD`). The API token printed at startup works with the CLI:
 `ARTIFACT_HUB_URL=http://localhost:5173 ARTIFACT_HUB_TOKEN=… python3 ../cli/publish-artifact/publish.py file.md`.
 Session cookies are `Secure`: Chrome and Firefox accept them on `localhost`, Safari does not. Changes in `web/src`
-hot-reload; changes in `src/` need a restart.
+hot-reload; changes in `src/` restart the API and content servers (`node --watch`), Vite stays up and the API token
+stays the same.
 
 ## Checks
 

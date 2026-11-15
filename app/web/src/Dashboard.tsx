@@ -206,7 +206,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const everLoaded = useRef(false);
   const reload = useCallback(() => {
     const seq = ++reloadSeq.current;
-    return Promise.all([api.list(), api.projects(), api.tags(), api.trash()])
+    // The trash only feeds its link and its page: when it fails to load, the gallery still shows (the last known
+    // trash stays).
+    return Promise.all([api.list(), api.projects(), api.tags(), api.trash().catch(() => null)])
       .then(([list, ps, ts, tr]) => {
         if (seq < appliedSeq.current) return;
         appliedSeq.current = seq;
@@ -216,7 +218,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
         setItems(list);
         setProjects(ps);
         setTagCounts(ts);
-        setTrash(tr);
+        if (tr) setTrash(tr);
         setActiveTags((cur) => {
           const kept = cur.filter((t) => ts.some((x) => x.name === t));
           return kept.length === cur.length ? cur : kept;
