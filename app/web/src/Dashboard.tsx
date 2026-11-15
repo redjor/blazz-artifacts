@@ -2,7 +2,7 @@ import { Link, useBlocker, useMatchRoute, useParams, useRouter, useSearch } from
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { api, copyDeferred, copyText, openPreview } from './api.ts';
-import { ActionsMenu, ArtifactCard, CARD_DRAG_TYPE, MetaLine, SelectCheck } from './ArtifactCard.tsx';
+import { ActionsMenu, ArtifactCard, CARD_DRAG_TYPE, MetaLine, SelectCheck, Snippet } from './ArtifactCard.tsx';
 import { ArtifactDrawer, type LinkActions } from './ArtifactPanel.tsx';
 import { FolderCard, FolderMenu, FolderRow, folderKey, folderOfKey, type FolderActions, type NamedFolder } from './FolderCard.tsx';
 import { copyFolderLink as copyFolderLinkOf, shareFolderFor7Days } from './folderLinks.ts';
@@ -19,7 +19,7 @@ import { NewFolderDialog } from './NewFolderDialog.tsx';
 import { PublishDialog } from './PublishDialog.tsx';
 import { SelectionBar, type BulkVisibility, type TagsOp } from './SelectionBar.tsx';
 import { TrashView } from './TrashView.tsx';
-import type { ArtifactDto, BulkOp, FolderSummary, Kind, LabelCount, TrashItemDto, Visibility } from './types.ts';
+import type { ArtifactDto, BulkOp, FolderSummary, Kind, LabelCount, SnippetPart, TrashItemDto, Visibility } from './types.ts';
 import { menuItem, TOOL_PANEL, TOOL_WRAP, toolButton } from './ui.ts';
 
 // Current folder: its name, null at the root, “~none” on /unfiled (“~” is not a valid label character).
@@ -104,6 +104,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  // Full-text search (design 07): server matches for `q` (artifact id → snippet of a text match, or null).
+  const [contentHits, setContentHits] = useState<{ q: string; hits: Map<string, SnippetPart[] | null> } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [pending, setPending] = useState<File | null>(null);
   const [projects, setProjects] = useState<FolderSummary[]>([]);
@@ -257,8 +259,26 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   useEffect(() => {
     if (searchOpen) searchInput.current?.focus();
   }, [searchOpen]);
+  // Content matches join the instant title/slug/tag filter after a short pause; a failure leaves the instant results.
+  useEffect(() => {
+    const term = query.trim();
+    if (term.length < 2) return;
+    let current = true;
+    const timer = setTimeout(() => {
+      api.search(term).then(
+        (r) => { if (current) setContentHits({ q: term, hits: new Map(r.results.map((x) => [x.id, x.snippet])) }); },
+        () => {},
+      );
+    }, 200);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [query]);
 
   const q = query.trim().toLowerCase();
+  // Only the answer for what is typed now counts (an older one is ignored until the new one arrives).
+  const hits = contentHits && contentHits.q === query.trim() ? contentHits.hits : null;
   const filtersActive = kind !== null || visibility !== null || activeTags.length > 0;
   // Root (“All”): folders as cards then artifacts without a folder; a search or a filter flattens (all artifacts).
   const atRoot = project === null;
@@ -270,7 +290,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
         activeTags.every((t) => a.tags.includes(t)) &&
         (visibility === null || a.visibility === visibility) &&
         (kind === null || a.kind === kind) &&
-        (!q || a.title.toLowerCase().includes(q) || a.slug.includes(q) || a.tags.some((t) => t.includes(q))),
+        (!q || a.title.toLowerCase().includes(q) || a.slug.includes(q) || a.tags.some((t) => t.includes(q)) || !!hits?.has(a.id)),
     )
     .sort((x, y) => byPinned(x, y) || COMPARE[sort](x, y));
   const namedFolders = projects.filter((p): p is NamedFolder => p.name !== null);
@@ -1010,7 +1030,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
                 const card = folderKey(f.name);
                 return <FolderCard key={card} f={f} tabbable={card === tabbableId} onFocusCard={() => setFocusId(card)} sharedViaTitle={sharedViaTitleOf(f)} {...folderActionsFor(f)} />;
               })}
-              {visible.map((a) => <ArtifactCard key={a.id} a={a} tabbable={a.id === tabbableId} onFocusCard={() => setFocusId(a.id)} selecting={selecting} {...actionsFor(a)} />)}
+              {visible.map((a) => <ArtifactCard key={a.id} a={a} tabbable={a.id === tabbableId} onFocusCard={() => setFocusId(a.id)} selecting={selecting} snippet={hits?.get(a.id)} {...actionsFor(a)} />)}
             </ul>
           ) : (
             <ul ref={list} onKeyDown={onListKey} className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
@@ -1036,6 +1056,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
                           <span className="truncate text-[15px]">{a.title}</span>
                         </span>
                         <MetaLine a={a} />
+                        {hits?.get(a.id) && <Snippet parts={hits.get(a.id)!} className="mt-1" />}
                         <span className="sr-only">{kindLabel(a.kind)}</span>
                       </span>
                       <span className="hidden shrink-0 font-mono text-xs text-muted lg:block">/a/{a.slug}{a.version && ` · v${a.version.number}`}</span>

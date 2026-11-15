@@ -23,6 +23,7 @@ import { tx } from '../db.ts';
 import { isValidSlug, slugify } from '../slug.ts';
 import { pruneVersions, removeArtifactFiles, thumbPath, THUMB_TYPES, tmpRoot, versionDir } from '../storage.ts';
 import { createKeyedLock, placeThumb, receiveThumb, THUMB_MIME } from '../thumbs.ts';
+import { indexArtifact, indexFields, indexMissing, searchArtifacts } from '../search.ts';
 import { deleteForGood } from '../trash.ts';
 import { receiveUpload } from '../upload.ts';
 import { folderVisitStats, viewTotals, visitStats } from '../visits.ts';
@@ -112,6 +113,8 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
   const limits = { maxFiles: cfg.zipMaxFiles, maxBytes: cfg.zipMaxBytes };
   const api = new Hono<AdminEnv>();
   const previewOf = createPreviewCache(cfg.dataDir);
+  // Full-text search (design 07): artifacts published before it existed are indexed once.
+  indexMissing(db, cfg.dataDir);
   const thumbLock = createKeyedLock();
 
   const mustGet = (id: string): Artifact => {
@@ -250,6 +253,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
           { id, slug, title, kind: r.kind, visibility, code_hash: codeHash, memory_storage: ['true', '1'].includes(fields.memoryStorage ?? '') ? 1 : 0, project, tags },
           { id: versionId, entry_path: r.entryPath, original_name: file.originalName, size_bytes: r.sizeBytes, file_count: r.fileCount },
         );
+        indexArtifact(db, cfg.dataDir, art);
         return c.json(artifactDto(art), 201);
       } catch (e) {
         await removeArtifactFiles(cfg.dataDir, id);
@@ -300,7 +304,9 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
       const updated = tx(db, () => {
         const a = updateArtifact(db, art.id, patch, bump);
         if (tags) setTags(db, art.id, tags);
-        return pinned === undefined ? a : setPinned(db, art.id, pinned);
+        const result = pinned === undefined ? a : setPinned(db, art.id, pinned);
+        indexFields(db, cfg.dataDir, result);
+        return result;
       });
       return c.json(artifactDto(updated));
     } catch (e) {
@@ -315,6 +321,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
       const versionId = newId();
       const r = await ingestFile(file, versionDir(cfg.dataDir, art.id, versionId), limits, staticLocale(cfg.locale));
       activateVersion(db, art.id, { id: versionId, entry_path: r.entryPath, original_name: file.originalName, size_bytes: r.sizeBytes, file_count: r.fileCount }, r.kind);
+      indexArtifact(db, cfg.dataDir, mustGet(art.id));
       await pruneVersions(db, cfg.dataDir, art.id);
       return c.json(artifactDto(mustGet(art.id)));
     }),
@@ -412,7 +419,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
             if (!next) throw new HttpError(400, 'too_many_tags', { title: art.title, max: MAX_TAGS });
             if (next.join() === current.join()) break;
             setTags(db, art.id, next);
-            touch(art.id);
+            indexFields(db, cfg.dataDir, touch(art.id));
             break;
           }
           case 'visibility':
@@ -554,6 +561,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     const restored = restoreVersion(db, art.id, versionId);
     if (!restored) throw new HttpError(404, 'version_not_found');
     if (restored === 'current') throw new HttpError(409, 'already_current');
+    indexArtifact(db, cfg.dataDir, mustGet(art.id));
     await pruneVersions(db, cfg.dataDir, art.id);
     return c.json(artifactDto(mustGet(art.id)));
   });
@@ -775,6 +783,9 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     if (!deleteProject(db, name)) throw new HttpError(404, 'folder_not_found');
     return c.json({ ok: true, movedChildren });
   });
+
+  // Full-text search (design 07): title, slug, tags and text of live artifacts; snippet from the text.
+  api.get('/search', (c) => c.json({ results: searchArtifacts(db, c.req.query('q') ?? '') }));
 
   api.get('/slugs/:slug', (c) => {
     const slug = c.req.param('slug');

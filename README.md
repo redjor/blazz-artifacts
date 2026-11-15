@@ -23,7 +23,7 @@ _To be added before the first public release:_
 - **Folders**: group artifacts, share a folder as a script-free page (`/d/<folder>`) with its own access mode, ordering, description and links.
 - **Link previews**: public artifacts, share links and shared folders unfurl in Slack, Teams, iMessage or WhatsApp with their title, excerpt and thumbnail; people and scripts are unaffected (`LINK_PREVIEWS`).
 - **Trash**: a deleted artifact is gone for visitors at once but can be restored for 30 days (`TRASH_DAYS`), undo included.
-- **Gallery**: real thumbnails captured by the CLI at publish time, kind filters, tags, search, pinning, list or grid, keyboard navigation and shortcuts.
+- **Gallery**: real thumbnails captured by the CLI at publish time, kind filters, tags, full-text search (content of Markdown, JSON, HTML pages and ZIP sites, accents ignored), pinning, list or grid, keyboard navigation and shortcuts.
 - **Bulk actions**: select artifacts to move, tag, change visibility, pin or trash them at once, with the same safeguards and an undo.
 - **Privacy-friendly audience stats**: views and daily unique visitors counted server side, no script injected in artifacts, no tracking cookie, no IP or User-Agent stored.
 - **Browser storage simulation** for mockups that use `localStorage`/`sessionStorage` inside the sandbox.

@@ -9,6 +9,10 @@ export interface TrashItemDto {
   purgeAt: string | null;
 }
 
+/** Full-text search (design 07): a result and the context of a text match (plain text, `hit` to highlight). */
+export interface SnippetPart { text: string; hit: boolean }
+export interface SearchResultDto { id: string; snippet: SnippetPart[] | null }
+
 /** Operations of POST /artifacts/bulk (design 05). */
 export type BulkOp = 'move' | 'addTags' | 'removeTags' | 'visibility' | 'pin' | 'unpin' | 'trash' | 'restore';
 

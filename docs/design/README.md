@@ -10,3 +10,4 @@ the decisions and their reasons.
 - [04 — Trash](04-trash.md): deleted artifacts restorable for 30 days, gone for visitors at once.
 - [05 — Bulk actions](05-bulk-actions.md): select artifacts and move, tag, change visibility, pin or trash them at once.
 - [06 — Link previews](06-link-previews.md): Open Graph cards for link-preview services, never for people or scripts.
+- [07 — Full-text search](07-full-text-search.md): search artifacts by their content with SQLite FTS5, snippets in the gallery.

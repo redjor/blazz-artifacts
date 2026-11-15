@@ -119,7 +119,7 @@ export const en = {
   'key.enter': 'Enter',
   'key.esc': 'Esc',
   'gallery.logout': 'Sign out',
-  'gallery.searchPlaceholder': 'Title, slug or tag',
+  'gallery.searchPlaceholder': 'Title, tag or content',
   'gallery.closeSearch': 'Close search',
   'gallery.searchTip': 'Search (/)',
   'gallery.create': 'Create',

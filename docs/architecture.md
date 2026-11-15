@@ -66,7 +66,8 @@ rows out), `versions` (number, kind, entry path, size, thumbnail), `artifact_tag
 title, description, visibility, code hash, epoch, salt, `parent_name` (FK, ON UPDATE CASCADE), `position`),
 `share_links` (artifact **or** folder target, token hash +
 encrypted token, expiry, revocation, open count), `visit_days` / `folder_visit_days` (daily aggregates),
-`visit_seen` (fingerprints, two days max), `admin_sessions`. Migrations run in place at startup, idempotent, in one
+`visit_seen` (fingerprints, two days max), `admin_sessions`, `search_index` (FTS5: title, slug, tags and text of the
+current version, one row per artifact, kept up to date by the API, `src/search.ts`). Migrations run in place at startup, idempotent, in one
 transaction (`src/db.ts`).
 
 Updates are atomic: a new version is extracted to its own folder, then one transaction inserts it and switches
@@ -113,6 +114,7 @@ message>", "params"?: {…} }`; codes are listed in `app/src/errors.ts`.
 | PUT | `/projects/:name/order` | Card order (`ids`) |
 | POST, DELETE | `/projects/:name/links[/:linkId]` | Folder share links |
 | GET | `/projects/:name/stats?days=N` | Folder page visits |
+| GET | `/search?q=` | Full-text search of live artifacts (title, slug, tags, text of the current version): ids, best first, with a highlighted snippet of a text match |
 | GET | `/slugs/:slug` | Slug validity and availability (`inTrash` when a trashed artifact holds it) |
 
 ## Internationalisation

@@ -288,6 +288,7 @@ export function bumpEpoch(db: Db, id: string): void {
 /** Deletes for good (row, then versions, links, tags and statistics by cascade). Files: removeArtifactFiles. */
 export function deleteArtifact(db: Db, id: string): void {
   db.prepare('DELETE FROM artifacts WHERE id = ?').run(id);
+  db.prepare('DELETE FROM search_index WHERE artifact_id = ?').run(id); // no foreign key on a virtual table
 }
 
 // Trash (design 04). The only functions that read the `artifacts` table rather than `live_artifacts`.

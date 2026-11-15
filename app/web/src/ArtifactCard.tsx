@@ -3,7 +3,7 @@ import { artifactOpenLabel, formatCount, formatDate, formatDay, formatViews, kin
 import { t } from './i18n/index.ts';
 import { CheckIcon, ChevronDownIcon, CopyIcon, FolderIcon, KIND_ICON, MoreIcon, OpenIcon, PinIcon, PlusIcon, ShareIcon, SlidersIcon, VISIBILITY_ICON } from './icons.tsx';
 import { Popover } from './Popover.tsx';
-import type { ArtifactDto } from './types.ts';
+import type { ArtifactDto, SnippetPart } from './types.ts';
 
 export interface CardActions {
   onManage: () => void; onPreview: () => void; onCopy: () => void; onShare: () => void; onTogglePin: () => void;
@@ -119,6 +119,15 @@ export function MetaLine({ a, className = '' }: { a: ArtifactDto; className?: st
   );
 }
 
+/** Where a search matched the artifact's text (design 07): one or two muted lines, the matched words highlighted. */
+export function Snippet({ parts, className = '' }: { parts: SnippetPart[]; className?: string }) {
+  return (
+    <span className={`line-clamp-2 block text-[13px] leading-5 text-muted ${className}`}>
+      {parts.map((p, i) => (p.hit ? <mark key={i} className="rounded-sm bg-ring/20 px-0.5 text-ink">{p.text}</mark> : <span key={i}>{p.text}</span>))}
+    </span>
+  );
+}
+
 /** Thumbnail to show, or null when missing or failing to load (falls back to the excerpt). */
 export function useThumbnail(url: string | null): [string | null, () => void] {
   const [failed, setFailed] = useState<string | null>(null);
@@ -222,7 +231,11 @@ export function SelectCheck({ checked, selecting, onToggle, className, onThumb =
   );
 }
 
-export function ArtifactCard({ a, tabbable, onFocusCard, selecting, ...actions }: CardActions & { a: ArtifactDto; tabbable: boolean; onFocusCard: () => void; selecting: boolean }) {
+export function ArtifactCard({ a, tabbable, onFocusCard, selecting, snippet, ...actions }: CardActions & {
+  a: ArtifactDto; tabbable: boolean; onFocusCard: () => void; selecting: boolean;
+  /** Search context when the text matched (design 07). */
+  snippet?: SnippetPart[] | null;
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [thumb, onThumbError] = useThumbnail(a.thumbnailUrl);
   const { checked } = actions;
@@ -258,6 +271,7 @@ export function ArtifactCard({ a, tabbable, onFocusCard, selecting, ...actions }
         <span className="block border-t border-line px-4 pt-3 pb-3.5 sm:px-5">
           <span className="block truncate text-[15px] leading-6">{a.title}</span>
           <MetaLine a={a} className="mt-0.5" />
+          {snippet && <Snippet parts={snippet} className="mt-1.5" />}
         </span>
       </button>
       <SelectCheck checked={checked} selecting={selecting} onToggle={actions.onToggleSelect} className="absolute top-3 left-3 size-8" />

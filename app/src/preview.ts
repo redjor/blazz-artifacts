@@ -53,10 +53,15 @@ function decodeEntities(s: string): string {
 const stripTags = (s: string) =>
   decodeEntities(s.replace(/<\/?(?:br|p|div|li|ul|ol|h[1-6]|tr|td|th|section|article|header|footer|blockquote)\b[^>]*>/gi, ' ').replace(/<[^>]*>/g, ''));
 
+/** HTML without comments and non-text blocks (scripts, styles, templates, SVG). */
+const withoutCode = (raw: string) =>
+  raw.replace(/<!--[\s\S]*?(?:-->|$)/g, ' ').replace(/<(script|style|noscript|template|svg)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, ' ');
+
+/** Visible text of an HTML page, whitespace collapsed (full-text search, design 07). */
+export const htmlText = (raw: string): string => stripTags(withoutCode(raw)).replace(/\s+/g, ' ').trim();
+
 function htmlPreview(raw: string): Preview {
-  const html = raw
-    .replace(/<!--[\s\S]*?(?:-->|$)/g, ' ')
-    .replace(/<(script|style|noscript|template|svg)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, ' ');
+  const html = withoutCode(raw);
   const title = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1];
   const h1 = /<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1];
   const heading = clip(stripTags(title ?? ''), HEADING_MAX) ?? clip(stripTags(h1 ?? ''), HEADING_MAX);
@@ -79,6 +84,27 @@ const stripInline = (s: string) =>
       .replace(/(^|[^\w*])[*_]([^*_\s][^*_]*?)[*_](?=[^\w*]|$)/g, '$1$2')
       .replace(/~~(.+?)~~/g, '$1'),
   );
+
+/**
+ * Readable text of a Markdown source (full-text search, design 07): front matter, fence lines, heading, quote, list and
+ * table markers and inline syntax removed; code block contents kept.
+ */
+export function markdownText(md: string): string {
+  return md
+    .replace(/^\uFEFF/, '')
+    .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')
+    .split(/\r?\n/)
+    .map((line) => {
+      const t = line.trim();
+      if (/^(```|~~~)/.test(t) || /^([-*_])(\s*\1){2,}$/.test(t) || /^\|?[\s:|-]+\|[\s:|-]*$/.test(t)) return '';
+      return stripInline(
+        t.replace(/^#{1,6}\s+/, '').replace(/\s+#+$/, '').replace(/^(>\s?)+/, '').replace(/^([-*+]|\d+[.)])\s+(\[[ xX]\]\s+)?/, '').replace(/\|/g, ' '),
+      );
+    })
+    .join('\n')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 function markdownPreview(md: string): Preview {
   const lines = md.replace(/^﻿/, '').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').split(/\r?\n/);

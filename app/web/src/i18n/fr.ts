@@ -120,7 +120,7 @@ export const fr: Messages = {
   'key.enter': 'Entrée',
   'key.esc': 'Échap',
   'gallery.logout': 'Déconnexion',
-  'gallery.searchPlaceholder': 'Titre, slug ou tag',
+  'gallery.searchPlaceholder': 'Titre, tag ou contenu',
   'gallery.closeSearch': 'Fermer la recherche',
   'gallery.searchTip': 'Rechercher (/)',
   'gallery.create': 'Créer',

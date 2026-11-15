@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Full-text search: the gallery search also finds artifacts by their content (Markdown, JSON, HTML pages, every page
+  of a ZIP site), ignoring accents and case, and shows where the words matched. SQLite FTS5, no new dependency;
+  existing artifacts are indexed at startup.
 - Link previews: public artifacts, active share links and publicly reachable folders show a card (title, excerpt,
   thumbnail) when pasted into Slack, Teams, iMessage, WhatsApp, Discord or LinkedIn. People, scripts and search
   engines get the usual responses; `LINK_PREVIEWS=0` turns it off.

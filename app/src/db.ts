@@ -75,6 +75,7 @@ export function openDb(file: string): Db {
   migrateThumbs(db);
   migrateFolders(db);
   migrateTrash(db);
+  migrateSearch(db);
   return db;
 }
 
@@ -88,6 +89,14 @@ function migrateTrash(db: Db): void {
     CREATE INDEX IF NOT EXISTS artifacts_deleted ON artifacts(deleted_at);
     CREATE VIEW IF NOT EXISTS live_artifacts AS SELECT * FROM artifacts WHERE deleted_at IS NULL;
   `);
+}
+
+// Full-text search (design 07): one row per artifact, trashed ones included (results join live_artifacts). Filled by
+// the API (src/search.ts) and, for artifacts without a row, at startup.
+function migrateSearch(db: Db): void {
+  db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+    artifact_id UNINDEXED, title, slug, tags, body, tokenize = 'unicode61 remove_diacritics 2'
+  )`);
 }
 
 // Shareable folders: one sheet per project, order in the folder, folder share links, folder visits.

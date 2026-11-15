@@ -1,5 +1,5 @@
 import { errorText, t } from './i18n/index.ts';
-import type { ArtifactDetail, ArtifactDto, BulkOp, FolderDetail, FolderSummary, LabelCount, LinkDto, StatsDto, TrashItemDto, VersionDto, Visibility } from './types.ts';
+import type { ArtifactDetail, ArtifactDto, BulkOp, SearchResultDto, FolderDetail, FolderSummary, LabelCount, LinkDto, StatsDto, TrashItemDto, VersionDto, Visibility } from './types.ts';
 
 let csrf = '';
 const seg = encodeURIComponent; // identifiers inside paths
@@ -99,6 +99,8 @@ export const api = {
   folderStats: (name: string, days = 30) => request<StatsDto>('GET', `/projects/${seg(name)}/stats?days=${days}`),
   folderPreview: (name: string) => request<{ url: string }>('GET', `/projects/${seg(name)}/preview`),
   deleteFolder: (name: string) => request<{ ok: true; movedChildren: number }>('DELETE', `/projects/${seg(name)}`),
+  /** Full-text search (design 07): live artifacts matching in title, slug, tags or text, best first. */
+  search: (q: string) => request<{ results: SearchResultDto[] }>('GET', `/search?q=${encodeURIComponent(q)}`),
   slug: (slug: string) => request<{ slug: string; valid: boolean; available: boolean; inTrash: boolean }>('GET', `/slugs/${encodeURIComponent(slug)}`),
 };
 
