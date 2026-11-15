@@ -44,6 +44,10 @@ const en = {
   'visibility.code': 'secret code',
   'visibility.link': 'link',
   'visibility.public': 'public',
+  'bar.version': 'Version {n}',
+  'bar.openAlone': 'Open alone',
+  'bar.openAloneTitle': 'Open the artifact on its own, full screen',
+  'bar.downloadTitle': 'Download the original file',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -86,6 +90,10 @@ const fr: Record<MessageKey, string> = {
   'visibility.code': 'code secret',
   'visibility.link': 'lien',
   'visibility.public': 'public',
+  'bar.version': 'Version {n}',
+  'bar.openAlone': 'Ouvrir seul',
+  'bar.openAloneTitle': 'Ouvrir l’artéfact seul, en plein écran',
+  'bar.downloadTitle': 'Télécharger le fichier original',
 };
 
 export const MESSAGES: Record<Locale, Record<MessageKey, string>> = { en, fr };

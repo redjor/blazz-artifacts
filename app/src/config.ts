@@ -19,6 +19,8 @@ export interface Config {
   trashDays: number;
   /** Open Graph page for link-preview services (LINK_PREVIEWS, on by default; 0 turns it off). Design 06. */
   linkPreviews: boolean;
+  /** Visitor bar above artifacts, through a frame page (ARTIFACT_BAR, on by default; 0 turns it off). Design 10. */
+  artifactBar: boolean;
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -88,5 +90,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     locale: parseLocaleSetting(env.HUB_LOCALE),
     trashDays: boundedInt(env, 'TRASH_DAYS', 30, 3650),
     linkPreviews: flag(env, 'LINK_PREVIEWS', true),
+    artifactBar: flag(env, 'ARTIFACT_BAR', true),
   };
 }

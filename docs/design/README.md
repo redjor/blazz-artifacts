@@ -13,3 +13,4 @@ the decisions and their reasons.
 - [07 — Full-text search](07-full-text-search.md): search artifacts by their content with SQLite FTS5, snippets in the gallery.
 - [08 — Command palette](08-command-palette.md): `Ctrl/Cmd+K` to reach an artifact, a folder or an action.
 - [09 — Sub-folder order](09-sub-folder-order.md): order sub-folders in the folder panel, like its artifacts.
+- [10 — Artifact bar](10-artifact-bar.md): a top bar above every artifact for visitors, through a script-free frame page.

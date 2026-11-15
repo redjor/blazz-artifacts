@@ -19,6 +19,7 @@ with an explicit message.
 | `ZIP_MAX_BYTES` | no | `209715200` | Maximum extracted size of a ZIP site. |
 | `TRASH_DAYS` | no | `30` | Days a deleted artifact stays in the trash (restorable, gone for visitors) before it is purged with its files. `0`: deleted at once, no trash. |
 | `LINK_PREVIEWS` | no | `1` | Open Graph cards (title, excerpt, thumbnail) for link-preview services (Slack, Teams, iMessage…) on public artifacts, active share links and publicly reachable folders. `0` turns them off. |
+| `ARTIFACT_BAR` | no | `1` | Top bar above artifacts for visitors (title, version, folder path, Original, Open alone), the artifact being framed on its signed path. `0`: direct redirect as before. |
 | `TZ` | no | | Only affects log timestamps; visit days are UTC. |
 
 Development only (`npm run dev`): `DEV_PASSWORD` (default `blazz-artifacts-dev`), `WEB_PORT` (5173), and the ports

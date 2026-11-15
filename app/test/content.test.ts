@@ -30,7 +30,9 @@ test('public : redirige vers un chemin signé puis sert avec CORS et sandbox', a
   const csp = res.headers.get('content-security-policy')!;
   assert.match(csp, /^sandbox allow-scripts /);
   assert.doesNotMatch(csp, /allow-same-origin/);
-  assert.match(csp, /frame-ancestors 'none'/);
+  // Framed only by the content origin (artifact bar, design 10).
+  assert.match(csp, /frame-ancestors 'self'/);
+  assert.equal(res.headers.get('x-frame-options'), 'SAMEORIGIN');
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(res.headers.get('referrer-policy'), 'no-referrer');
   const asset = await h.content.request(location.replace('index.html', 'app.js'));
@@ -53,7 +55,7 @@ test('PDF servi sans sandbox', async () => {
   await seedArtifact(h, { slug: 'doc', visibility: 'public', kind: 'pdf', entry: 'document.pdf', files: { 'document.pdf': '%PDF-1.4' } });
   const { res } = await follow(h, '/a/doc');
   assert.equal(res.headers.get('content-type'), 'application/pdf');
-  assert.equal(res.headers.get('content-security-policy'), "frame-ancestors 'none'");
+  assert.equal(res.headers.get('content-security-policy'), "frame-ancestors 'self'");
 });
 
 test('Markdown : sandbox sans scripts', async () => {

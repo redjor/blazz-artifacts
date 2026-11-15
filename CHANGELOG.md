@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Visitor bar: artifacts open under a slim top bar (folder path when opened from a folder, title, version, Original
+  download for Markdown, JSON and PDF, Open alone); folder pages get the same bar with the theme switch. The artifact
+  is framed on its signed path; scripts, link previews and `ARTIFACT_BAR=0` keep the direct redirect.
 - Command palette: `Ctrl/Cmd+K` finds an artifact (title, tags, folder or content), a folder or an action
   (publish, new folder, trash, view, language, shortcuts, sign out) and opens it with Enter.
 - Sub-folders can be ordered in the folder panel's "Order" tab (drag, or Move then arrows), like its artifacts; the

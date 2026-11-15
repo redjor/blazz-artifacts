@@ -21,6 +21,7 @@ _To be added before the first public release:_
 - **Four visibility modes** per artifact: private, secret code, share link, public. Share links are revocable, can expire, and are counted.
 - **Stable URLs with versions**: re-publishing keeps `/a/<slug>`, adds a version; preview and restore any kept version.
 - **Folders**: group artifacts, share a folder as a script-free page (`/d/<folder>`) with its own access mode, ordering, description and links.
+- **Visitor bar**: every artifact opens under a slim bar with its folder path, title, version, the original file and "Open alone"; folder pages share it (`ARTIFACT_BAR`).
 - **Link previews**: public artifacts, share links and shared folders unfurl in Slack, Teams, iMessage or WhatsApp with their title, excerpt and thumbnail; people and scripts are unaffected (`LINK_PREVIEWS`).
 - **Trash**: a deleted artifact is gone for visitors at once but can be restored for 30 days (`TRASH_DAYS`), undo included.
 - **Gallery**: real thumbnails captured by the CLI at publish time, kind filters, tags, full-text search (content of Markdown, JSON, HTML pages and ZIP sites, accents ignored), pinning, list or grid, keyboard navigation and shortcuts, a `Ctrl/Cmd+K` command palette.
@@ -62,6 +63,7 @@ Both ports are bound to `127.0.0.1`: put a reverse proxy in front with two hostn
 | `PUBLIC_CONTENT_URL` | required | Public origin of the content server, used to build artifact, folder and share URLs. |
 | `ADMIN_PASSWORD_HASH` | empty | `scrypt:…` from `src/scripts/hash-password.ts`. Empty: admin sign-in impossible. |
 | `API_TOKEN_HASH` | empty | SHA-256 hex from `src/scripts/new-api-token.ts`. Empty: API token disabled. |
+| `ARTIFACT_BAR` | `1` | Top bar above artifacts for visitors (the artifact is framed); `0` turns it off. |
 | `LINK_PREVIEWS` | `1` | Open Graph cards for link-preview services (Slack, Teams, iMessage…); `0` turns them off. |
 | `HUB_LOCALE` | `en` | Language of visitor pages: `en`, `fr`, or `auto` (Accept-Language). |
 | `MAX_UPLOAD_MB` | `100` | Upload size limit. |

@@ -1,5 +1,6 @@
 import { tr, type Locale } from '../i18n.ts';
 import { DARK, escapeHtml, LIGHT, SANS, SERIF, typography } from '../ingest/page.ts';
+import { BAR_CSS, renderBar } from './bar.ts';
 import type { Kind, Visibility } from '../repo.ts';
 
 // Public page of a folder: rendered here, served without scripts (CSP sandbox). All text comes from the database and goes through escapeHtml.
@@ -55,12 +56,9 @@ html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 ${SANS};-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 ::selection{background:color-mix(in oklab,var(--link) 28%,transparent)}
 .theme-toggle{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
-.page{max-width:1180px;margin:0 auto;padding:20px 32px 112px}
-.toolbar{display:flex;justify-content:flex-end;align-items:center;font:14px/1 ${SANS}}
-.theme-btn{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:0 14px;border-radius:999px;color:var(--muted);cursor:pointer;
-user-select:none;transition:background-color 150ms ease-out,color 150ms ease-out}
-@media (hover:hover){.theme-btn:hover{background:var(--band);color:var(--fg)}}
-#theme-toggle:focus-visible~.page .theme-btn{outline:2px solid var(--link);outline-offset:2px}
+${BAR_CSS}
+.page{max-width:1180px;margin:0 auto;padding:0 32px 112px}
+#theme-toggle:focus-visible~.bar .theme-btn{outline:2px solid var(--link);outline-offset:2px}
 .theme-btn>span{display:inline-flex;align-items:center;gap:8px}
 .theme-btn .to-light,html:has(#theme-toggle:checked) .theme-btn .to-dark{display:none}
 html:has(#theme-toggle:checked) .theme-btn .to-light{display:inline-flex}
@@ -91,9 +89,6 @@ ${(['markdown', 'html', 'site', 'pdf', 'json'] as Kind[]).map((k) => `.k-${k}{ba
 .name{display:block;margin:16px 0 0;font:400 21px/1.3 ${SERIF};color:var(--fg);text-wrap:balance;overflow-wrap:anywhere}
 .meta{display:flex;flex-wrap:wrap;gap:4px 8px;margin:6px 0 0;color:var(--muted);font-size:14px;line-height:1.4}
 .meta span+span::before{content:"·";margin-right:8px}
-.crumbs{display:flex;flex-wrap:wrap;overflow-wrap:anywhere;gap:6px;font-size:14px;margin:0 0 12px;color:var(--muted)}
-.crumbs a{color:inherit}
-.crumbs [aria-current]{color:var(--fg)}
 .grid.folders{margin-bottom:44px}
 .sub{display:block;font-size:14px;color:var(--muted)}
 .num{font-variant-numeric:tabular-nums}
@@ -101,9 +96,9 @@ ${(['markdown', 'html', 'site', 'pdf', 'json'] as Kind[]).map((k) => `.k-${k}{ba
 .preview strong{color:var(--fg);font-weight:600}
 .empty{max-width:46ch;margin:0;padding:40px 0;border-top:1px solid var(--rule);color:var(--muted);font:19px/1.6 ${SERIF};font-style:italic}
 @media (max-width:640px){
-body{font-size:16px}.page{padding:12px 20px 80px}.head{margin:28px 0 36px}.desc{font-size:17px}.grid{gap:36px}.name{font-size:19px}
+body{font-size:16px}.page{padding:0 20px 80px}.head{margin:28px 0 36px}.desc{font-size:17px}.grid{gap:36px}.name{font-size:19px}
 }
-@media print{.toolbar,.theme-toggle{display:none}body{background:#fff;color:#000}}
+@media print{.theme-toggle{display:none}body{background:#fff;color:#000}}
 `;
 
 const dayFmt = (locale: Locale) => new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -144,12 +139,6 @@ function folderCard(f: FolderSubCard, nowMs: number, locale: Locale): string {
     : `<li><span class="card">${inner}</span></li>`;
 }
 
-function crumbs(items: { href: string; title: string }[], current: string, locale: Locale): string {
-  if (items.length === 0) return '';
-  const links = items.map((i) => `<a href="${escapeHtml(i.href)}">${escapeHtml(i.title)}</a>`).join('<span aria-hidden="true">/</span>');
-  return `<nav class="crumbs" aria-label="${tr(locale, 'folder.breadcrumb')}">${links}<span aria-hidden="true">/</span><span aria-current="page">${escapeHtml(current)}</span></nav>`;
-}
-
 export function renderFolderPage(o: FolderPageInput, locale: Locale = 'en'): string {
   const title = o.title?.trim() || o.name;
   const n = o.cards.length;
@@ -160,6 +149,8 @@ export function renderFolderPage(o: FolderPageInput, locale: Locale = 'en'): str
     : '';
   const arts = n ? `<ul class="grid" role="list">${o.cards.map((c) => card(c, o.nowMs, locale)).join('\n')}</ul>` : '';
   const body = n === 0 && o.folders.length === 0 ? `<p class="empty">${tr(locale, 'folder.empty')}</p>` : folders + arts;
+  // The theme switch (a label for the checkbox, pure CSS) sits at the right of the top bar (design 10).
+  const themeButton = `<label for="theme-toggle" class="bar-btn theme-btn" aria-hidden="true"><span class="to-dark">${svg(MOON, 16)}<span class="label">${tr(locale, 'theme.dark')}</span></span><span class="to-light">${svg(SUN, 16)}<span class="label">${tr(locale, 'theme.light')}</span></span></label>`;
   const preview = o.preview
     ? `<p class="preview" role="note"><strong>${tr(locale, 'folder.previewTitle')}</strong><span>${tr(locale, 'folder.previewBody', { visibility: tr(locale, `visibility.${o.preview.visibility}`) })}</span></p>`
     : '';
@@ -174,10 +165,10 @@ export function renderFolderPage(o: FolderPageInput, locale: Locale = 'en'): str
 </head>
 <body>
 <input type="checkbox" id="theme-toggle" class="theme-toggle" aria-label="${tr(locale, 'theme.toggle')}">
+${renderBar({ path: o.breadcrumb, title, heading: false, actions: themeButton }, locale)}
 <div class="page">
 ${preview}
-<nav class="toolbar"><label for="theme-toggle" class="theme-btn" aria-hidden="true"><span class="to-dark">${svg(MOON, 16)}${tr(locale, 'theme.dark')}</span><span class="to-light">${svg(SUN, 16)}${tr(locale, 'theme.light')}</span></label></nav>
-<header class="head">${crumbs(o.breadcrumb, title, locale)}<h1 class="title">${typography(locale, escapeHtml(title))}</h1>${desc}${count}</header>
+<header class="head"><h1 class="title">${typography(locale, escapeHtml(title))}</h1>${desc}${count}</header>
 <main>${body}</main>
 </div>
 </body>

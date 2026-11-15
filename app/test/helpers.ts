@@ -28,6 +28,8 @@ export function testConfig(dataDir: string, over: Partial<Config> = {}): Config 
     trashDays: 0,
     // Existing tests expect the usual redirect for every bot; the link preview tests set it.
     linkPreviews: false,
+    // Existing tests expect the redirect on every navigation; the artifact bar tests set it.
+    artifactBar: false,
     ...over,
   };
 }

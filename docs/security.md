@@ -15,8 +15,10 @@ Every content response gets, whatever its type:
 
 - `Content-Security-Policy: sandbox …` **without** `allow-same-origin` (HTML and sites:
   `allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads`; Markdown and
-  JSON readers and folder pages: same without `allow-scripts`) and `frame-ancestors 'none'`;
-- `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`;
+  JSON readers and folder pages: same without `allow-scripts`) and `frame-ancestors 'none'`, except signed-path files:
+  `frame-ancestors 'self'` (see "Artifact bar" below);
+- `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` (`SAMEORIGIN` on
+  signed-path files);
 - `Cache-Control: no-store` except served files (`private, max-age=3600`).
 
 Each document therefore runs in an **opaque origin**: it cannot read the content domain's cookies or the responses of
@@ -71,6 +73,18 @@ a dedicated cookie (`__Host-fgrant_<name>`) and key. Folder thumbnails are serve
 `/d/<name>/thumb/<artifact>/<version>`, with folder access or a page-issued signature (1 h, tied to the folder epoch)
 and current membership. The admin UI asks for confirmation (with the count) before sharing a folder that contains private
 artifacts or moving a non-public artifact into a shared folder.
+
+### Artifact bar
+
+A browser navigation (`Sec-Fetch-Dest: document`) to an artifact's entry (`/a/<slug>`, `/d/<name>/a/<slug>`) gets, after
+the usual access checks, a frame page: a top bar and the artifact in an `<iframe>` on its signed path. That page is
+**not sandboxed**, so that its origin is the content origin and the signed path accepts it as an ancestor; it allows
+nothing active (`default-src 'none'`, inline styles, `frame-src 'self'`, no script, no form, `frame-ancestors 'none'`)
+and holds only escaped titles and same-origin links. Signed-path files may therefore be framed by the content origin
+only (`frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`): an artifact runs in an opaque origin and still cannot
+frame another one, and no other site can frame any of them. Every other response keeps `DENY`. Requests without fetch
+metadata (scripts, `curl`), link previews and the frame's own requests keep the redirect. `ARTIFACT_BAR=0` restores
+the redirect for everyone.
 
 ### Link previews
 

@@ -24,7 +24,8 @@ import { ancestors, children } from '../folder-tree.ts';
 import { renderFolderPage } from './folder-page.ts';
 import { checkOgImage, renderOgPage, signOgImage } from './og.ts';
 import { decodeGrant, encodeGrant, GRANT_TTL_S, grantCookieName, isGrantValid } from './grant.ts';
-import { PDF_CSP, SANDBOX_SCRIPTS, SANDBOX_STATIC } from './headers.ts';
+import { FRAME_PAGE_CSP, framedBySelf, PDF_CSP, SANDBOX_SCRIPTS, SANDBOX_STATIC } from './headers.ts';
+import { renderFramePage } from './frame-page.ts';
 import { injectShim } from './shim.ts';
 import { contentTypeFor } from './mime.ts';
 import { folderUnlockPage, notFoundPage, unlockPage } from './pages.ts';
@@ -55,7 +56,8 @@ export function createContentApp(deps: ContentDeps): Hono {
     await next();
     c.res.headers.set('X-Content-Type-Options', 'nosniff');
     c.res.headers.set('Referrer-Policy', 'no-referrer');
-    c.res.headers.set('X-Frame-Options', 'DENY');
+    // Signed-path files set SAMEORIGIN (the artifact frame page, design 10); everything else is never framed.
+    if (!c.res.headers.has('X-Frame-Options')) c.res.headers.set('X-Frame-Options', 'DENY');
     // Only served files (200) set their own cache; nothing else may ever be cached.
     if (!c.res.headers.has('Cache-Control')) c.res.headers.set('Cache-Control', 'no-store');
     if (!c.res.headers.has('Content-Security-Policy')) c.res.headers.set('Content-Security-Policy', SANDBOX_STATIC);
@@ -120,7 +122,8 @@ export function createContentApp(deps: ContentDeps): Hono {
       'Content-Length': String(info.size),
       'Cache-Control': 'private, max-age=3600',
       'Access-Control-Allow-Origin': '*',
-      'Content-Security-Policy': csp,
+      'Content-Security-Policy': framedBySelf(csp),
+      'X-Frame-Options': 'SAMEORIGIN',
     });
     if (attachment) headers.set('Content-Disposition', 'attachment');
     // Simulated storage: only HTML pages of an html/site artifact, up to 2 MiB.
@@ -130,6 +133,26 @@ export function createContentApp(deps: ContentDeps): Hono {
       return new Response(body, { status: 200, headers });
     }
     return new Response(Readable.toWeb(createReadStream(full)) as ReadableStream, { status: 200, headers });
+  }
+
+  // ——— Artifact bar (design 10): a browser navigation to an artifact's entry gets the bar and the artifact framed on
+  // its signed path; scripts, previews, assets and the frame's own requests keep the redirect.
+  const wantsFrame = (c: Context) => cfg.artifactBar && c.req.method === 'GET' && c.req.header('sec-fetch-dest') === 'document';
+  /** Folder links from the granting folder down to `p` (nothing above the granting folder, as on folder pages). */
+  const framePath = (p: Project, granting: Project) => {
+    const chain = chainOf(p);
+    const top = Math.max(0, chain.findIndex((x) => x.name === granting.name));
+    return chain.slice(0, top + 1).reverse().map((x) => ({ href: `/d/${x.name}`, title: x.title?.trim() || x.name }));
+  };
+  function framePage(c: Context, art: Artifact, v: Version, sig: string, path: { href: string; title: string }[]) {
+    const kind = v.kind ?? art.kind;
+    const base = `/a/${art.slug}/${sig}/`;
+    const originalFile = kind === 'markdown' ? 'source.md' : kind === 'json' ? 'source.json' : kind === 'pdf' ? v.entry_path : null;
+    const page = renderFramePage({
+      title: art.title, version: v.number, path, src: base + encodePath(v.entry_path),
+      original: originalFile ? { href: base + encodePath(originalFile), name: v.original_name } : null,
+    }, loc(c));
+    return c.html(page, 200, { 'Content-Security-Policy': FRAME_PAGE_CSP });
   }
 
   // CORS on redirects too: a module import from an open page survives expiry.
@@ -174,6 +197,7 @@ export function createContentApp(deps: ContentDeps): Hono {
       visits.view(art.id, clientIp(c), c.req.header('user-agent') ?? '', nowMs());
     }
     const sig = signPath(keys.pathSig, { artifactId: art.id, versionId: version.id, epoch: art.access_epoch }, nowS());
+    if (parsed.rest === '' && wantsFrame(c)) return framePage(c, art, version, sig, []);
     return redirect(c, `/a/${art.slug}/${sig}/${encodePath(parsed.rest || version.entry_path)}`);
   });
 
@@ -314,7 +338,8 @@ export function createContentApp(deps: ContentDeps): Hono {
   // Artifact entry through the folder: folder access, then current membership, then the usual signed path.
   app.get('/d/:project/a/:slug', (c) => {
     const project = folderOf(c.req.param('project'));
-    if (!folderAccess(c, project)) return denyFolder(c, project);
+    const granting = folderAccess(c, project);
+    if (!granting) return denyFolder(c, project);
     const art = getArtifactBySlug(db, c.req.param('slug'));
     if (!art?.current_version_id || art.project !== project!.name) return notFound(c);
     const version = getVersion(db, art.current_version_id);
@@ -323,6 +348,7 @@ export function createContentApp(deps: ContentDeps): Hono {
     // Counts as a view of the artifact; the signed redirect that follows never counts.
     if (isHumanNavigation(c)) visits.view(art.id, clientIp(c), c.req.header('user-agent') ?? '', nowMs());
     const sig = signPath(keys.pathSig, { artifactId: art.id, versionId: version.id, epoch: art.access_epoch }, nowS());
+    if (wantsFrame(c)) return framePage(c, art, version, sig, framePath(project!, granting));
     return redirect(c, `/a/${art.slug}/${sig}/${encodePath(version.entry_path)}`);
   });
 
