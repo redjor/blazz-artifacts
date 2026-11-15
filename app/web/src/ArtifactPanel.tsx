@@ -204,15 +204,17 @@ export interface LinkActions {
  * Side panel of an artifact (full screen on mobile): header with actions, three tabs, ↑/↓ navigation
  * in the gallery's current order. Each tab keeps its draft: saving one does not clear the other.
  */
-export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, links, dirtyRef, confirmMove, onNavigate, onClose, onChanged, onDeleted, onNotice, restoreFocus }: {
+export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, links, dirtyRef, confirmMove, trashOn, onNavigate, onClose, onChanged, onDelete, onNotice, restoreFocus }: {
   id: string; summary: ArtifactDto | undefined; order: string[]; projects: string[]; paths?: Record<string, string>; tagNames: string[]; links: LinkActions;
   /** Read by the gallery to confirm before a Back/Forward navigation. */
   dirtyRef: RefObject<boolean>;
   /** The gallery's safeguard before a folder change (moving into a shared folder): false when the owner declines. */
   confirmMove: (a: ArtifactDto, to: string | null) => boolean;
   onNavigate: (id: string) => void; onClose: () => void; onChanged: () => unknown; onNotice: (m: string) => void;
-  /** After a deletion: the gallery reloads; the panel then closes itself. */
-  onDeleted: () => unknown;
+  /** Deletes the artifact (gallery rules: trash and undo, or a confirmation); true when it is gone. */
+  onDelete: (a: ArtifactDto) => Promise<boolean>;
+  /** The hub keeps deleted artifacts in a trash (the delete button says so). */
+  trashOn: boolean;
   restoreFocus: () => HTMLElement | null;
 }) {
   const [tab, setTab] = useState<TabId>('info');
@@ -434,18 +436,11 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
     void act('restore', () => api.restore(view.id, v.id), t('notice.restored', { n: v.number }));
   };
 
+  // The gallery deletes (to the trash with an undo, or for good after a confirmation when the trash is off) and
+  // reloads first, so focus can go to a neighbouring card that exists. The panel then closes itself (exit animation,
+  // Back undoes the entry its opening pushed) rather than vanishing with the reload.
   const remove = async () => {
-    if (!window.confirm(t('confirm.deleteArtifact', { title: view.title }))) return;
-    try {
-      await api.remove(view.id);
-      // Gallery reloaded before closing: focus can then go to a neighbouring card that exists. The panel closes
-      // itself (exit animation, Back undoes the entry its opening pushed) rather than vanishing with the reload.
-      await Promise.resolve(onDeleted()).catch(() => {});
-      onNotice(t('notice.artifactDeleted'));
-      requestClose(true);
-    } catch (e) {
-      setError((e as Error).message);
-    }
+    if (await onDelete(view)) requestClose(true);
   };
 
   const projectInvalid = !!info && info.project.trim() !== '' && normalizeLabel(info.project) === null;
@@ -582,7 +577,7 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
             </Section>
 
             <Section title={t('common.dangerZone')}>
-              <button type="button" onClick={() => void remove()} className="rounded-lg border border-danger/40 px-3 py-2 text-sm text-danger hover:bg-danger/10">{t('artifact.delete')}</button>
+              <button type="button" onClick={() => void remove()} className="rounded-lg border border-danger/40 px-3 py-2 text-sm text-danger hover:bg-danger/10">{trashOn ? t('artifact.trash') : t('artifact.delete')}</button>
             </Section>
           </div>
 

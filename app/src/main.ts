@@ -9,6 +9,7 @@ import { openDb } from './db.ts';
 import { codeLimiterOptions, loginLimiterOptions, RateLimiter } from './ratelimit.ts';
 import { purgeExpiredSessions } from './repo.ts';
 import { ensureDataDirs, repairModes, tmpRoot } from './storage.ts';
+import { purgeTrash } from './trash.ts';
 import { purgeVisitSeen } from './visits.ts';
 
 const cfg = loadConfig();
@@ -25,6 +26,17 @@ const purgeVisits = () => {
   }
 };
 purgeVisits();
+// Trash (design 04): artifacts deleted more than TRASH_DAYS days ago are purged at startup then every hour.
+const purgeOldTrash = async () => {
+  if (cfg.trashDays === 0) return;
+  try {
+    const n = await purgeTrash(db, cfg.dataDir, cfg.trashDays, Date.now());
+    if (n) console.log(`[maintenance] trash: ${n} artifact(s) deleted for good`);
+  } catch (err) {
+    console.error('[maintenance] trash purge:', err instanceof Error ? err.message : 'unknown error');
+  }
+};
+void purgeOldTrash();
 const loginLimiter = new RateLimiter(loginLimiterOptions);
 const codeLimiter = new RateLimiter(codeLimiterOptions);
 
@@ -58,6 +70,7 @@ setInterval(() => {
     console.error('[maintenance]', err);
   }
   purgeVisits();
+  void purgeOldTrash();
 }, 3600_000).unref();
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {

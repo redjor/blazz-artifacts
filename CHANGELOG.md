@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Trash: deleting an artifact moves it to the trash for 30 days (`TRASH_DAYS`), with an undo; it is gone for
+  visitors at once and keeps its address until it is restored or purged. `/trash` lists, restores and empties.
 - Sub-folders: folders can be nested up to 4 levels; access to a folder opens its sub-folders.
 - Admin URLs are real paths (`/f/<folder>`, `/unfiled`, `?a=<id>`) and the browser's Back button returns to the
   previous folder or closes the artifact panel. Old `#project=…&a=…` links are redirected.

@@ -24,6 +24,8 @@ export function testConfig(dataDir: string, over: Partial<Config> = {}): Config 
     adminBind: '127.0.0.1',
     contentBind: '127.0.0.1',
     locale: 'en',
+    // Existing tests expect DELETE to remove for good; the trash tests set it.
+    trashDays: 0,
     ...over,
   };
 }

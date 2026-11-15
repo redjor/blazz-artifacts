@@ -28,6 +28,7 @@ export const ERRORS = {
   artifact_not_found: 'Artifact not found',
   invalid_slug: 'Invalid slug: lowercase letters, digits and hyphens, 48 characters max',
   slug_taken: 'This slug is already in use',
+  slug_in_trash: 'This slug belongs to an artifact in the trash: restore it or delete it for good',
   no_thumbnail: 'No thumbnail',
   file_missing: 'Missing file',
   invalid_boolean: '{field} must be a boolean',

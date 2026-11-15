@@ -12,6 +12,8 @@ export interface Artifact {
   project: string | null; pinned_at: string | null;
   /** Position in the folder (admin-chosen order); null: not placed yet. */
   project_position: number | null;
+  /** Moved to the trash at this date (design 04); null for every artifact read through `live_artifacts`. */
+  deleted_at: string | null;
 }
 export interface Version {
   id: string; artifact_id: string; entry_path: string; original_name: string;
@@ -33,11 +35,11 @@ export type NewVersion = Pick<Version, 'id' | 'entry_path' | 'original_name' | '
 const nowIso = () => new Date().toISOString();
 
 export function getArtifact(db: Db, id: string): Artifact | undefined {
-  return db.prepare('SELECT * FROM artifacts WHERE id = ?').get(id) as Artifact | undefined;
+  return db.prepare('SELECT * FROM live_artifacts WHERE id = ?').get(id) as Artifact | undefined;
 }
 
 export function getArtifactBySlug(db: Db, slug: string): Artifact | undefined {
-  return db.prepare('SELECT * FROM artifacts WHERE slug = ?').get(slug) as Artifact | undefined;
+  return db.prepare('SELECT * FROM live_artifacts WHERE slug = ?').get(slug) as Artifact | undefined;
 }
 
 export interface ArtifactFilter {
@@ -56,10 +58,10 @@ export function listArtifacts(db: Db, filter: ArtifactFilter = {}): Artifact[] {
     params.push(filter.project);
   }
   for (const tag of filter.tags ?? []) {
-    where.push('EXISTS (SELECT 1 FROM artifact_tags t WHERE t.artifact_id = artifacts.id AND t.tag = ?)');
+    where.push('EXISTS (SELECT 1 FROM artifact_tags t WHERE t.artifact_id = live_artifacts.id AND t.tag = ?)');
     params.push(tag);
   }
-  const sql = `SELECT * FROM artifacts${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY updated_at DESC`;
+  const sql = `SELECT * FROM live_artifacts${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY updated_at DESC`;
   return db.prepare(sql).all(...params) as unknown as Artifact[];
 }
 
@@ -79,16 +81,16 @@ export interface LabelCount { name: string; count: number }
 /** Folders with counts; `name: null` groups artifacts without a folder (present only if there are some). */
 export function listProjects(db: Db): { name: string | null; count: number }[] {
   const named = db
-    .prepare('SELECT project AS name, COUNT(*) AS count FROM artifacts WHERE project IS NOT NULL GROUP BY project ORDER BY project')
+    .prepare('SELECT project AS name, COUNT(*) AS count FROM live_artifacts WHERE project IS NOT NULL GROUP BY project ORDER BY project')
     .all()
     .map((r) => ({ name: r.name as string, count: Number(r.count) }));
-  const none = (db.prepare('SELECT COUNT(*) AS n FROM artifacts WHERE project IS NULL').get() as { n: number }).n;
+  const none = (db.prepare('SELECT COUNT(*) AS n FROM live_artifacts WHERE project IS NULL').get() as { n: number }).n;
   return none > 0 ? [...named, { name: null, count: none }] : named;
 }
 
 export function listTagCounts(db: Db): LabelCount[] {
   return db
-    .prepare('SELECT tag AS name, COUNT(*) AS count FROM artifact_tags GROUP BY tag ORDER BY count DESC, tag ASC')
+    .prepare('SELECT t.tag AS name, COUNT(*) AS count FROM artifact_tags t JOIN live_artifacts a ON a.id = t.artifact_id GROUP BY t.tag ORDER BY count DESC, t.tag ASC')
     .all()
     .map((r) => ({ name: r.name as string, count: Number(r.count) }));
 }
@@ -186,7 +188,7 @@ export function renameProject(db: Db, from: string, to: string): void {
 
 /** A project exists if it has a sheet or at least one artifact. */
 export function projectExists(db: Db, name: string): boolean {
-  return !!db.prepare('SELECT 1 FROM projects WHERE name = ? UNION ALL SELECT 1 FROM artifacts WHERE project = ? LIMIT 1').get(name, name);
+  return !!db.prepare('SELECT 1 FROM projects WHERE name = ? UNION ALL SELECT 1 FROM live_artifacts WHERE project = ? LIMIT 1').get(name, name);
 }
 
 /**
@@ -205,14 +207,14 @@ export function deleteProject(db: Db, name: string): boolean {
 /** Folder artifacts in page order: newcomers (not placed) first, newest to oldest, then the chosen order. */
 export function listFolderArtifacts(db: Db, name: string): Artifact[] {
   return db
-    .prepare('SELECT * FROM artifacts WHERE project = ? ORDER BY project_position IS NOT NULL, project_position, updated_at DESC, id')
+    .prepare('SELECT * FROM live_artifacts WHERE project = ? ORDER BY project_position IS NOT NULL, project_position, updated_at DESC, id')
     .all(name) as unknown as Artifact[];
 }
 
 /** The `limit` most recently modified artifacts of a project (`null`: no project), newest first. */
 export function recentProjectArtifacts(db: Db, project: string | null, limit: number): Artifact[] {
   return db
-    .prepare(`SELECT * FROM artifacts WHERE ${project === null ? 'project IS NULL' : 'project = ?'} ORDER BY updated_at DESC, id LIMIT ?`)
+    .prepare(`SELECT * FROM live_artifacts WHERE ${project === null ? 'project IS NULL' : 'project = ?'} ORDER BY updated_at DESC, id LIMIT ?`)
     .all(...(project === null ? [limit] : [project, limit])) as unknown as Artifact[];
 }
 
@@ -233,9 +235,9 @@ export interface FolderSummary { name: string | null; count: number; privateCoun
 export function listFolders(db: Db): FolderSummary[] {
   const rows = db.prepare(`
     SELECT n.name AS name, p.visibility AS visibility, p.title AS title, p.parent_name AS parent, p.position AS position,
-      (SELECT COUNT(*) FROM artifacts a WHERE a.project = n.name) AS count,
-      (SELECT COUNT(*) FROM artifacts a WHERE a.project = n.name AND a.visibility = 'private') AS private_count
-    FROM (SELECT project AS name FROM artifacts WHERE project IS NOT NULL UNION SELECT name FROM projects) n
+      (SELECT COUNT(*) FROM live_artifacts a WHERE a.project = n.name) AS count,
+      (SELECT COUNT(*) FROM live_artifacts a WHERE a.project = n.name AND a.visibility = 'private') AS private_count
+    FROM (SELECT project AS name FROM live_artifacts WHERE project IS NOT NULL UNION SELECT name FROM projects) n
     LEFT JOIN projects p ON p.name = n.name
     ORDER BY n.name`).all();
   const named: FolderSummary[] = rows.map((r) => ({
@@ -243,7 +245,7 @@ export function listFolders(db: Db): FolderSummary[] {
     visibility: (r.visibility as Visibility | null) ?? 'private', title: (r.title as string | null) ?? null,
     parent: (r.parent as string | null) ?? null, position: r.position === null || r.position === undefined ? null : Number(r.position),
   }));
-  const none = db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(visibility = 'private'), 0) AS p FROM artifacts WHERE project IS NULL").get() as { n: number; p: number };
+  const none = db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(visibility = 'private'), 0) AS p FROM live_artifacts WHERE project IS NULL").get() as { n: number; p: number };
   return Number(none.n) > 0 ? [...named, { name: null, count: Number(none.n), privateCount: Number(none.p), visibility: 'private', title: null, parent: null, position: null }] : named;
 }
 
@@ -280,8 +282,53 @@ export function bumpEpoch(db: Db, id: string): void {
   db.prepare('UPDATE artifacts SET access_epoch = access_epoch + 1, updated_at = ? WHERE id = ?').run(nowIso(), id);
 }
 
+/** Deletes for good (row, then versions, links, tags and statistics by cascade). Files: removeArtifactFiles. */
 export function deleteArtifact(db: Db, id: string): void {
   db.prepare('DELETE FROM artifacts WHERE id = ?').run(id);
+}
+
+// Trash (design 04). The only functions that read the `artifacts` table rather than `live_artifacts`.
+
+export type TrashedArtifact = Artifact & { deleted_at: string };
+
+/** Moves to the trash: gone for visitors at once (epoch bumped: signed paths already issued stop working). */
+export function trashArtifact(db: Db, id: string): boolean {
+  return Number(db.prepare('UPDATE artifacts SET deleted_at = ?, access_epoch = access_epoch + 1 WHERE id = ? AND deleted_at IS NULL').run(nowIso(), id).changes) > 0;
+}
+
+export function getTrashedArtifact(db: Db, id: string): TrashedArtifact | undefined {
+  return db.prepare('SELECT * FROM artifacts WHERE id = ? AND deleted_at IS NOT NULL').get(id) as TrashedArtifact | undefined;
+}
+
+/** Trashed artifacts, most recent deletion first. */
+export function listTrash(db: Db): TrashedArtifact[] {
+  return db.prepare('SELECT * FROM artifacts WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC, id').all() as unknown as TrashedArtifact[];
+}
+
+/** Trashed artifacts deleted before `cutoffIso` (due for the purge). */
+export function trashedBefore(db: Db, cutoffIso: string): string[] {
+  return (db.prepare('SELECT id FROM artifacts WHERE deleted_at IS NOT NULL AND deleted_at < ?').all(cutoffIso) as { id: string }[]).map((r) => r.id);
+}
+
+/** Who holds a slug, trash included (a trashed artifact keeps its slug so that restoring it keeps its URL). */
+export function slugHolder(db: Db, slug: string): { id: string; trashed: boolean } | undefined {
+  const r = db.prepare('SELECT id, deleted_at FROM artifacts WHERE slug = ?').get(slug) as { id: string; deleted_at: string | null } | undefined;
+  return r && { id: r.id, trashed: r.deleted_at !== null };
+}
+
+/**
+ * Brings a trashed artifact back as it was. Its folder is kept if it still exists (a sheet or another live artifact),
+ * otherwise it comes back without a folder. Undefined if it is not in the trash.
+ */
+export function restoreArtifact(db: Db, id: string): Artifact | undefined {
+  return tx(db, () => {
+    const art = getTrashedArtifact(db, id);
+    if (!art) return undefined;
+    const project = art.project !== null && projectExists(db, art.project) ? art.project : null;
+    db.prepare('UPDATE artifacts SET deleted_at = NULL, project = ?, project_position = CASE WHEN ? IS NULL THEN NULL ELSE project_position END WHERE id = ?')
+      .run(project, project, id);
+    return getArtifact(db, id);
+  });
 }
 
 export function getVersion(db: Db, id: string): Version | undefined {

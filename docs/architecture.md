@@ -57,7 +57,8 @@ data/
 ```
 
 Main tables: `artifacts` (slug, title, kind, visibility, code hash, access epoch, current version, folder, pin,
-folder position), `versions` (number, kind, entry path, size, thumbnail), `artifact_tags`, `projects` (folder sheets:
+folder position, `deleted_at` for the trash; every read goes through the `live_artifacts` view, which leaves trashed
+rows out), `versions` (number, kind, entry path, size, thumbnail), `artifact_tags`, `projects` (folder sheets:
 title, description, visibility, code hash, epoch, salt, `parent_name` (FK, ON UPDATE CASCADE), `position`),
 `share_links` (artifact **or** folder target, token hash +
 encrypted token, expiry, revocation, open count), `visit_days` / `folder_visit_days` (daily aggregates),
@@ -84,7 +85,10 @@ message>", "params"?: {…} }`; codes are listed in `app/src/errors.ts`.
 | POST | `/login`, `/logout` | Session (not available with the API token) |
 | GET | `/artifacts` | List; `?slug=` exact match, `?project=`, `?tag=` (repeatable) |
 | POST | `/artifacts` | Create (multipart: `file`, `title`, `slug`, `visibility`, `code`, `memoryStorage`, `project`, `tags`) |
-| GET, PATCH, DELETE | `/artifacts/:id` | Detail with links; update title, slug, visibility, code, memoryStorage, project, tags, pinned; delete |
+| GET, PATCH, DELETE | `/artifacts/:id` | Detail with links; update title, slug, visibility, code, memoryStorage, project, tags, pinned; delete (to the trash, or for good with `TRASH_DAYS=0`) |
+| POST | `/artifacts/:id/restore` | Bring a trashed artifact back (without a folder if its folder is gone) |
+| GET, DELETE | `/trash` | Trashed artifacts with their purge date; empty the trash |
+| DELETE | `/trash/:id` | Delete one trashed artifact for good |
 | PUT | `/artifacts/:id/content` | New version (multipart `file`) |
 | POST | `/artifacts/:id/revoke-all` | Bump the access epoch |
 | POST | `/artifacts/:id/share` | Switch to link visibility and create a link in one call (`hours`, `label`) |
@@ -104,7 +108,7 @@ message>", "params"?: {…} }`; codes are listed in `app/src/errors.ts`.
 | PUT | `/projects/:name/order` | Card order (`ids`) |
 | POST, DELETE | `/projects/:name/links[/:linkId]` | Folder share links |
 | GET | `/projects/:name/stats?days=N` | Folder page visits |
-| GET | `/slugs/:slug` | Slug validity and availability |
+| GET | `/slugs/:slug` | Slug validity and availability (`inTrash` when a trashed artifact holds it) |
 
 ## Internationalisation
 

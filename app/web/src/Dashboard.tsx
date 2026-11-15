@@ -1,4 +1,4 @@
-import { useBlocker, useMatchRoute, useParams, useRouter, useSearch } from '@tanstack/react-router';
+import { Link, useBlocker, useMatchRoute, useParams, useRouter, useSearch } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { api, copyDeferred, copyText, openPreview } from './api.ts';
@@ -10,14 +10,15 @@ import { deleteChildrenNote, FolderDrawer, type TabId } from './FolderPanel.tsx'
 import { ACCEPT_ALL, artifactOpenLabel, compareText, KIND_FILTERS, kindLabel, kindTileLabel, VISIBILITY_ORDER, visibilityLabel, visibilityShort } from './format.ts';
 import { t, tn, type Locale, type MessageKey } from './i18n/index.ts';
 import { LanguageSwitch } from './LanguageSwitch.tsx';
-import { CheckIcon, ChevronDownIcon, CloseIcon, FilterIcon, FolderPlusIcon, GridIcon, KIND_ICON, KeyboardIcon, ListIcon, LogoutIcon, PinIcon, PlusIcon, SearchIcon, UploadIcon, VISIBILITY_ICON } from './icons.tsx';
+import { CheckIcon, ChevronDownIcon, CloseIcon, FilterIcon, FolderPlusIcon, GridIcon, KIND_ICON, KeyboardIcon, ListIcon, LogoutIcon, PinIcon, PlusIcon, SearchIcon, TrashIcon, UploadIcon, VISIBILITY_ICON } from './icons.tsx';
 import { hasOpenLayer, isEditable } from './layers.ts';
 import { Popover, type PopoverHandle } from './Popover.tsx';
 import { ancestorsOf, childrenOf, folderPath, sharedVia, survivingParent, treeOptions } from './folderTree.ts';
 import { FolderBreadcrumb } from './FolderBreadcrumb.tsx';
 import { NewFolderDialog } from './NewFolderDialog.tsx';
 import { PublishDialog } from './PublishDialog.tsx';
-import type { ArtifactDto, FolderSummary, Kind, LabelCount, Visibility } from './types.ts';
+import { TrashView } from './TrashView.tsx';
+import type { ArtifactDto, FolderSummary, Kind, LabelCount, TrashItemDto, Visibility } from './types.ts';
 
 // Current folder: its name, null at the root, “~none” on /unfiled (“~” is not a valid label character).
 const NONE = '~none';
@@ -120,7 +121,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const [sort, setSortState] = useState<Sort>(sortPref.read);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  // Bottom toast; `undo` adds an Undo button (and Ctrl/Cmd+Z) for a deletion to the trash.
+  const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
+  const setNotice = useCallback((text: string | null) => setToast(text === null ? null : { text }), []);
+  // Trash (design 04): `days` 0 means the hub deletes for good at once (no trash, a confirmation instead).
+  const [trash, setTrash] = useState<{ days: number; items: TrashItemDto[] }>({ days: 30, items: [] });
+  const [trashPending, setTrashPending] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const searchButton = useRef<HTMLButtonElement>(null);
@@ -135,6 +141,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const params = useParams({ strict: false });
   const search = useSearch({ strict: false });
   const project = params.folder ?? (matchRoute({ to: '/unfiled' }) ? NONE : null);
+  const inTrash = !!matchRoute({ to: '/trash' });
   const selected = search.a ?? null;
   // Read by callbacks created once (reload, closeDrawer): latest known state.
   const latest = useRef({ project, selected });
@@ -198,8 +205,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const everLoaded = useRef(false);
   const reload = useCallback(() => {
     const seq = ++reloadSeq.current;
-    return Promise.all([api.list(), api.projects(), api.tags()])
-      .then(([list, ps, ts]) => {
+    return Promise.all([api.list(), api.projects(), api.tags(), api.trash()])
+      .then(([list, ps, ts, tr]) => {
         if (seq < appliedSeq.current) return;
         appliedSeq.current = seq;
         const before = knownFolders.current;
@@ -208,6 +215,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
         setItems(list);
         setProjects(ps);
         setTagCounts(ts);
+        setTrash(tr);
         setActiveTags((cur) => {
           const kept = cur.filter((t) => ts.some((x) => x.name === t));
           return kept.length === cur.length ? cur : kept;
@@ -228,25 +236,21 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
         if (everLoaded.current) setNotice((e as Error).message);
         else setLoadError((e as Error).message);
       });
-  }, [go]);
+  }, [go, setNotice]);
   // The open artifact is not in the loaded list (deleted elsewhere, Back/Forward to a deleted one): its panel closes.
   useEffect(() => {
     if (loaded && selected && selected !== closingPanel.current && !items.some((a) => a.id === selected)) closeDrawer();
   }, [loaded, selected, items, closeDrawer]);
-  // Deleted from its own panel: the gallery reloads first (focus can then land on a neighbour that exists),
-  // and the panel closes itself with its exit animation.
-  const onArtifactDeleted = async () => {
-    closingPanel.current = latest.current.selected;
-    await reload();
-  };
+
   useEffect(() => {
     void reload();
   }, [reload]);
   useEffect(() => {
-    if (!notice) return;
-    const t = setTimeout(() => setNotice(null), Math.max(2500, notice.length * 60));
+    if (!toast) return;
+    // An undo stays long enough to be reached.
+    const t = setTimeout(() => setToast(null), toast.undo ? 8000 : Math.max(2500, toast.text.length * 60));
     return () => clearTimeout(t);
-  }, [notice]);
+  }, [toast]);
   useEffect(() => {
     if (searchOpen) searchInput.current?.focus();
   }, [searchOpen]);
@@ -287,7 +291,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const currentFolder = namedFolders.find((p) => p.name === inFolder) ?? null;
   // Page title (top bar path and title row): the gallery, the open folder (its name from the URL until the
   // folder list arrives, or when it failed to load), or “no folder”.
-  const pageTitle = project === null ? t('app.heading') : project === NONE ? t('common.noFolder') : currentFolder ? folderTitle(currentFolder) : project;
+  const pageTitle = inTrash ? t('trash.title') : project === null ? t('app.heading') : project === NONE ? t('common.noFolder') : currentFolder ? folderTitle(currentFolder) : project;
   const FolderVisIcon = VISIBILITY_ICON[currentFolder?.visibility ?? 'private'];
   const toggleTag = (t: string) => setActiveTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
   const filterCount = activeTags.length + (visibility ? 1 : 0) + (kind ? 1 : 0);
@@ -329,8 +333,15 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
   useEffect(() => {
     keys.current = (e: KeyboardEvent) => {
+      // Ctrl/Cmd+Z right after a deletion: the same as the toast's Undo (never inside a text field, which has its own).
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z' && toast?.undo && !isEditable(e.target) && !hasOpenLayer()) {
+        e.preventDefault();
+        runUndo();
+        return;
+      }
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || isEditable(e.target) || hasOpenLayer()) return;
       if (e.key === '/') {
+        if (inTrash) return; // no search on the trash page
         e.preventDefault();
         if (searchOpen) searchInput.current?.focus();
         else setSearchOpen(true);
@@ -409,6 +420,82 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
     if (a.visibility === 'code') return copy(a.url, t('notice.linkCopiedCode'));
     if (a.activeLinkUrl) return copy(a.activeLinkUrl, t('notice.shareLinkCopied'));
     if (window.confirm(t('confirm.noActiveLink'))) await share(a);
+  };
+
+  /**
+   * Deletes an artifact (artifact panel): to the trash with an undo, or for good after a confirmation when the hub
+   * runs without a trash. True when it is gone; the panel then closes itself.
+   */
+  const deleteArtifact = async (a: ArtifactDto): Promise<boolean> => {
+    const trashOn = trash.days > 0;
+    if (!trashOn && !window.confirm(t('confirm.deleteArtifact', { title: a.title }))) return false;
+    lastIndex.current = Math.max(0, order.indexOf(a.id));
+    try {
+      await api.remove(a.id);
+    } catch (e) {
+      setNotice((e as Error).message);
+      return false;
+    }
+    // Its panel closes itself (exit animation, Back): its absence from the reloaded list must not close it first.
+    if (latest.current.selected === a.id) closingPanel.current = a.id;
+    await reload();
+    if (!trashOn) setNotice(t('notice.artifactDeleted'));
+    else {
+      setToast({
+        text: t('notice.trashed', { title: a.title }),
+        undo: () => void restoreDeleted(a.id, a.title, a.project).then((ok) => ok && requestAnimationFrame(() => cardFocusTarget(a.id)?.focus())),
+      });
+    }
+    return true;
+  };
+  const runUndo = () => {
+    const undo = toast?.undo;
+    setToast(null);
+    undo?.();
+  };
+
+  /** Restores from the trash (undo, trash page); says so when it comes back without its folder. */
+  const restoreDeleted = async (id: string, title: string, project: string | null): Promise<boolean> => {
+    try {
+      const art = await api.restoreFromTrash(id);
+      await reload();
+      setNotice(project && !art.project ? t('notice.restoredNoFolder', { title }) : t('notice.artifactRestored', { title }));
+      return true;
+    } catch (e) {
+      setNotice((e as Error).message);
+      return false;
+    }
+  };
+  const restoreFromTrashPage = async (item: TrashItemDto) => {
+    setTrashPending(item.id);
+    await restoreDeleted(item.id, item.title, item.project);
+    setTrashPending(null);
+  };
+  const deleteFromTrash = async (item: TrashItemDto) => {
+    if (!window.confirm(t('confirm.deleteForGood', { title: item.title }))) return;
+    setTrashPending(item.id);
+    try {
+      await api.deleteForGood(item.id);
+      await reload();
+      setNotice(t('notice.deletedForGood', { title: item.title }));
+    } catch (e) {
+      setNotice((e as Error).message);
+    } finally {
+      setTrashPending(null);
+    }
+  };
+  const emptyTrash = async () => {
+    if (!window.confirm(tn('confirm.emptyTrash', trash.items.length))) return;
+    setTrashPending('all');
+    try {
+      const r = await api.emptyTrash();
+      await reload();
+      setNotice(tn('notice.trashEmptied', r.deleted));
+    } catch (e) {
+      setNotice((e as Error).message);
+    } finally {
+      setTrashPending(null);
+    }
   };
 
   const togglePin = async (a: ArtifactDto): Promise<void> => {
@@ -582,7 +669,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       {/* Top bar on every page: the path on the left (the open folder carries its actions menu); Share in a folder, then the account tools. */}
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-line bg-canvas px-3.5">
         <FolderBreadcrumb
-          trail={project === null ? [] : [
+          trail={project === null && !inTrash ? [] : [
             { name: null, title: t('app.heading') },
             ...(currentFolder ? ancestorsOf(namedFolders, currentFolder.name).map((a) => ({ name: a.name, title: a.title ?? a.name })) : []),
           ]}
@@ -623,6 +710,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       </header>
 
       <div className="mx-auto max-w-[54rem] px-5 pt-10 pb-24 sm:px-8 sm:pt-12">
+        {inTrash ? (
+          <TrashView items={trash.items} days={trash.days} pending={trashPending} onRestore={(a) => void restoreFromTrashPage(a)}
+            onDelete={(a) => void deleteFromTrash(a)} onEmpty={() => void emptyTrash()}
+            folderTitle={(name) => { const f = namedFolders.find((x) => x.name === name); return f ? folderTitle(f) : name; }} />
+        ) : (<>
         {/* Title on the left, tools on the right; the search slots in before the tools (or below on mobile). */}
         <div className="relative flex flex-wrap items-center gap-x-3 gap-y-3">
           <h1 title={pageTitle} className="order-1 min-w-0 grow basis-0 truncate font-serif text-[2rem] leading-tight font-normal tracking-[-0.015em] sm:text-[2.25rem]">{pageTitle}</h1>
@@ -837,6 +929,15 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
             </ul>
           )}
         </section>
+        {/* Root only, and only when there is something to restore. */}
+        {loaded && project === null && trash.items.length > 0 && (
+          <p className="mt-10 text-center">
+            <Link to="/trash" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-muted hover:bg-surface-2 hover:text-ink">
+              <TrashIcon className="size-4" />{t('trash.link', { n: trash.items.length })}
+            </Link>
+          </p>
+        )}
+        </>)}
       </div>
 
       <input ref={fileInput} type="file" className="hidden" accept={ACCEPT_ALL}
@@ -852,7 +953,15 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       {/* Outside #root: still announced when a modal layer makes the page inert. */}
       {createPortal(
         <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
-          {notice && <div key={notice} className="enter-rise max-w-md rounded-xl bg-ink px-4 py-2.5 text-center text-sm text-canvas shadow-[0_10px_30px_-10px_oklch(0_0_0/0.5)]">{notice}</div>}
+          {toast && (
+            <div key={toast.text} className="enter-rise flex max-w-md items-center gap-3 rounded-xl bg-ink px-4 py-2.5 text-center text-sm text-canvas shadow-[0_10px_30px_-10px_oklch(0_0_0/0.5)]">
+              <span>{toast.text}</span>
+              {toast.undo && (
+                <button type="button" onClick={runUndo} aria-keyshortcuts="Control+Z Meta+Z"
+                  className="pointer-events-auto -my-1 shrink-0 rounded-md px-2 py-1 font-medium underline underline-offset-2 hover:bg-canvas/15">{t('common.undo')}</button>
+              )}
+            </div>
+          )}
         </div>,
         document.body,
       )}
@@ -874,7 +983,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       )}
       {loaded && selected && (
         <ArtifactDrawer id={selected} summary={selectedSummary} order={artifactOrder} projects={projectNames} paths={folderPaths} tagNames={tagCounts.map((t) => t.name)} links={links}
-          confirmMove={confirmMove} onNavigate={(id) => { go(project, id, true); setFocusId(id); }} onClose={closeDrawer} onChanged={reload} onDeleted={onArtifactDeleted} onNotice={setNotice}
+          confirmMove={confirmMove} onNavigate={(id) => { go(project, id, true); setFocusId(id); }} onClose={closeDrawer} onChanged={reload} onDelete={deleteArtifact} trashOn={trash.days > 0} onNotice={setNotice}
           dirtyRef={drawerDirty} restoreFocus={() => cardFocusTarget(selected)} />
       )}
     </div>

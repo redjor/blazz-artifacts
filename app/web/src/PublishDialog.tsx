@@ -7,7 +7,7 @@ import { Modal } from './Modal.tsx';
 import type { ArtifactDto, Visibility } from './types.ts';
 import { VisibilityPicker } from './VisibilityPicker.tsx';
 
-type SlugState = 'checking' | 'ok' | 'taken' | 'invalid';
+type SlugState = 'checking' | 'ok' | 'taken' | 'inTrash' | 'invalid';
 
 export function PublishDialog({ file, defaultProject, projects, paths, tags: knownTags, onClose, onPublished }: {
   file: File; defaultProject: string; projects: string[]; paths?: Record<string, string>; tags: string[]; onClose: () => void; onPublished: () => void;
@@ -30,7 +30,7 @@ export function PublishDialog({ file, defaultProject, projects, paths, tags: kno
     // `live`: an answer for a slug typed earlier (already sent, so not cancelled by clearTimeout) is ignored.
     let live = true;
     const timer = setTimeout(() => {
-      api.slug(slug).then((r) => live && setSlugState(!r.valid ? 'invalid' : r.available ? 'ok' : 'taken')).catch(() => live && setSlugState('invalid'));
+      api.slug(slug).then((r) => live && setSlugState(!r.valid ? 'invalid' : r.available ? 'ok' : r.inTrash ? 'inTrash' : 'taken')).catch(() => live && setSlugState('invalid'));
     }, 300);
     return () => {
       live = false;

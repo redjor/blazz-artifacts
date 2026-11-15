@@ -1,6 +1,14 @@
 export type Kind = 'html' | 'markdown' | 'pdf' | 'json' | 'site';
 export type Visibility = 'private' | 'code' | 'link' | 'public';
 
+/** An artifact in the trash (design 04): enough to list and restore it. */
+export interface TrashItemDto {
+  id: string; slug: string; title: string; kind: Kind; visibility: Visibility; project: string | null;
+  deletedAt: string;
+  /** When the purge deletes it for good (null when the trash is off). */
+  purgeAt: string | null;
+}
+
 export interface ArtifactDto {
   id: string; slug: string; title: string; kind: Kind; visibility: Visibility; hasCode: boolean; memoryStorage: boolean; project: string | null; tags: string[];
   createdAt: string; updatedAt: string; url: string;

@@ -74,7 +74,20 @@ export function openDb(file: string): Db {
   migrateVisits(db);
   migrateThumbs(db);
   migrateFolders(db);
+  migrateTrash(db);
   return db;
+}
+
+// Trash (design 04): `deleted_at` marks a trashed artifact. Every read goes through `live_artifacts`, so a
+// forgotten filter cannot show a trashed artifact; only the trash functions in repo.ts read `artifacts` itself.
+// Runs last: the view must see every column added by the migrations above.
+function migrateTrash(db: Db): void {
+  const cols = db.prepare('PRAGMA table_info(artifacts)').all() as { name: string }[];
+  if (!cols.some((c) => c.name === 'deleted_at')) db.exec('ALTER TABLE artifacts ADD COLUMN deleted_at TEXT');
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS artifacts_deleted ON artifacts(deleted_at);
+    CREATE VIEW IF NOT EXISTS live_artifacts AS SELECT * FROM artifacts WHERE deleted_at IS NULL;
+  `);
 }
 
 // Shareable folders: one sheet per project, order in the folder, folder share links, folder visits.

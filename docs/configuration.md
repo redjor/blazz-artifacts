@@ -17,6 +17,7 @@ with an explicit message.
 | `MAX_UPLOAD_MB` | no | `100` | Upload limit, enforced while streaming. |
 | `ZIP_MAX_FILES` | no | `2000` | Maximum entries in a ZIP site. |
 | `ZIP_MAX_BYTES` | no | `209715200` | Maximum extracted size of a ZIP site. |
+| `TRASH_DAYS` | no | `30` | Days a deleted artifact stays in the trash (restorable, gone for visitors) before it is purged with its files. `0`: deleted at once, no trash. |
 | `TZ` | no | | Only affects log timestamps; visit days are UTC. |
 
 Development only (`npm run dev`): `DEV_PASSWORD` (default `blazz-artifacts-dev`), `WEB_PORT` (5173), and the ports

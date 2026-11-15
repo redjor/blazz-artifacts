@@ -67,6 +67,12 @@ export function modifiedText(iso: string, now = new Date()): string {
   return r.absolute ? t('common.modifiedOn', { date: r.text }) : t('common.modified', { when: r.text });
 }
 
+/** "Deleted yesterday" / "Deleted on Oct 28" (trash rows). */
+export function deletedText(iso: string, now = new Date()): string {
+  const r = relative(iso, now);
+  return r.absolute ? t('trash.deletedOn', { date: r.text }) : t('trash.deleted', { when: r.text });
+}
+
 /** "1 view", "124 views", "1.2K views". */
 export function formatViews(n: number): string {
   return tn('views', n, { n: n < 1000 ? whole().format(n) : compact().format(n) });

@@ -13,16 +13,17 @@ import { staticLocale } from '../i18n.ts';
 import { newId } from '../ids.ts';
 import { ingestFile, stripExtension, type UploadedFile } from '../ingest/ingest.ts';
 import {
-  activateVersion, bumpEpoch, bumpProjectEpoch, deleteArtifact, deleteProject, getArtifact, getArtifactBySlug, getProject, getVersion, insertArtifactWithVersion,
+  activateVersion, bumpEpoch, bumpProjectEpoch, deleteProject, getArtifact, getArtifactBySlug, getProject, getTrashedArtifact, getVersion, insertArtifactWithVersion,
   listFolderArtifacts, listFolderLinks, listFolders, listVersions, projectExists, recentProjectArtifacts, renameProject, restoreVersion, revokeFolderLink, setProjectOrder,
-  setVersionThumb, getTags, insertLink, listArtifacts, listLinks, listTagCounts, revokeLink, setPinned, setTags, updateArtifact, upsertProject, VISIBILITIES,
-  type Artifact, type ArtifactPatch, type Project, type ProjectPatch, type ShareLink, type Version, type Visibility,
+  setVersionThumb, getTags, insertLink, listArtifacts, listLinks, listTagCounts, listTrash, restoreArtifact, revokeLink, setPinned, setTags, slugHolder, trashArtifact,
+  updateArtifact, upsertProject, VISIBILITIES, type Artifact, type ArtifactPatch, type TrashedArtifact, type Project, type ProjectPatch, type ShareLink, type Version, type Visibility,
 } from '../repo.ts';
 import { normalizeLabel, normalizeTags } from '../labels.ts';
 import { tx } from '../db.ts';
 import { isValidSlug, slugify } from '../slug.ts';
 import { pruneVersions, removeArtifactFiles, thumbPath, THUMB_TYPES, tmpRoot, versionDir } from '../storage.ts';
 import { createKeyedLock, placeThumb, receiveThumb, THUMB_MIME } from '../thumbs.ts';
+import { deleteForGood } from '../trash.ts';
 import { receiveUpload } from '../upload.ts';
 import { folderVisitStats, viewTotals, visitStats } from '../visits.ts';
 import type { AdminEnv } from './auth.ts';
@@ -114,10 +115,16 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     return art;
   };
 
+  // A slug held by another artifact, in the trash included (restoring it must keep its URL).
+  const slugConflict = (slug: string, selfId?: string): HttpError | null => {
+    const holder = slugHolder(db, slug);
+    if (!holder || holder.id === selfId) return null;
+    return new HttpError(409, holder.trashed ? 'slug_in_trash' : 'slug_taken');
+  };
   const assertSlugFree = (slug: string, selfId?: string) => {
     if (!isValidSlug(slug)) throw new HttpError(400, 'invalid_slug');
-    const other = getArtifactBySlug(db, slug);
-    if (other && other.id !== selfId) throw new HttpError(409, 'slug_taken');
+    const conflict = slugConflict(slug, selfId);
+    if (conflict) throw conflict;
   };
 
   const isActive = (l: ShareLink) => !l.revoked_at && (!l.expires_at || Date.parse(l.expires_at) > nowMs());
@@ -241,7 +248,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
         return c.json(artifactDto(art), 201);
       } catch (e) {
         await removeArtifactFiles(cfg.dataDir, id);
-        if (String(e).includes('UNIQUE')) throw new HttpError(409, 'slug_taken');
+        if (String(e).includes('UNIQUE')) throw slugConflict(slug) ?? new HttpError(409, 'slug_taken');
         throw e;
       }
     }),
@@ -292,7 +299,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
       });
       return c.json(artifactDto(updated));
     } catch (e) {
-      if (String(e).includes('UNIQUE')) throw new HttpError(409, 'slug_taken');
+      if (String(e).includes('UNIQUE')) throw (patch.slug && slugConflict(patch.slug, art.id)) || new HttpError(409, 'slug_taken');
       throw e;
     }
   });
@@ -314,11 +321,45 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     return c.json(artifactDto(mustGet(art.id)));
   });
 
+  // To the trash (design 04), or for good when the trash is off (TRASH_DAYS=0).
   api.delete('/artifacts/:id', async (c) => {
     const art = mustGet(c.req.param('id'));
-    deleteArtifact(db, art.id);
-    await removeArtifactFiles(cfg.dataDir, art.id);
+    if (cfg.trashDays === 0) {
+      await deleteForGood(db, cfg.dataDir, art.id);
+      return c.json({ ok: true, trashed: false });
+    }
+    trashArtifact(db, art.id);
+    return c.json({ ok: true, trashed: true });
+  });
+
+  const mustGetTrashed = (id: string): TrashedArtifact => {
+    const art = getTrashedArtifact(db, id);
+    if (!art) throw new HttpError(404, 'artifact_not_found');
+    return art;
+  };
+  const trashDto = (art: TrashedArtifact) => ({
+    id: art.id, slug: art.slug, title: art.title, kind: art.kind, visibility: art.visibility, project: art.project,
+    deletedAt: art.deleted_at,
+    purgeAt: cfg.trashDays > 0 ? new Date(Date.parse(art.deleted_at) + cfg.trashDays * 86_400_000).toISOString() : null,
+  });
+
+  api.get('/trash', (c) => c.json({ days: cfg.trashDays, items: listTrash(db).map(trashDto) }));
+
+  api.post('/artifacts/:id/restore', (c) => {
+    const art = restoreArtifact(db, mustGetTrashed(c.req.param('id')).id);
+    if (!art) throw new HttpError(404, 'artifact_not_found');
+    return c.json(artifactDto(art));
+  });
+
+  api.delete('/trash/:id', async (c) => {
+    await deleteForGood(db, cfg.dataDir, mustGetTrashed(c.req.param('id')).id);
     return c.json({ ok: true });
+  });
+
+  api.delete('/trash', async (c) => {
+    const items = listTrash(db);
+    for (const art of items) await deleteForGood(db, cfg.dataDir, art.id);
+    return c.json({ ok: true, deleted: items.length });
   });
 
   api.post('/artifacts/:id/links', async (c) => {
@@ -663,7 +704,8 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
   api.get('/slugs/:slug', (c) => {
     const slug = c.req.param('slug');
     const valid = isValidSlug(slug);
-    return c.json({ slug, valid, available: valid && !getArtifactBySlug(db, slug) });
+    const holder = valid ? slugHolder(db, slug) : undefined;
+    return c.json({ slug, valid, available: valid && !holder, inTrash: !!holder?.trashed });
   });
 
   return api;

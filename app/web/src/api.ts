@@ -1,5 +1,5 @@
 import { errorText, t } from './i18n/index.ts';
-import type { ArtifactDetail, ArtifactDto, FolderDetail, FolderSummary, LabelCount, LinkDto, StatsDto, VersionDto, Visibility } from './types.ts';
+import type { ArtifactDetail, ArtifactDto, FolderDetail, FolderSummary, LabelCount, LinkDto, StatsDto, TrashItemDto, VersionDto, Visibility } from './types.ts';
 
 let csrf = '';
 const seg = encodeURIComponent; // identifiers inside paths
@@ -62,7 +62,12 @@ export const api = {
   update: (id: string, patch: { title?: string; slug?: string; visibility?: Visibility; code?: string; memoryStorage?: boolean; project?: string | null; tags?: string[]; pinned?: boolean }) =>
     request<ArtifactDto>('PATCH', `/artifacts/${seg(id)}`, patch),
   replace: (id: string, form: FormData) => request<ArtifactDto>('PUT', `/artifacts/${seg(id)}/content`, form),
-  remove: (id: string) => request<{ ok: true }>('DELETE', `/artifacts/${seg(id)}`),
+  /** To the trash (`trashed`), or deleted for good when the hub runs without a trash (TRASH_DAYS=0). */
+  remove: (id: string) => request<{ ok: true; trashed: boolean }>('DELETE', `/artifacts/${seg(id)}`),
+  trash: () => request<{ days: number; items: TrashItemDto[] }>('GET', '/trash'),
+  restoreFromTrash: (id: string) => request<ArtifactDto>('POST', `/artifacts/${seg(id)}/restore`),
+  deleteForGood: (id: string) => request<{ ok: true }>('DELETE', `/trash/${seg(id)}`),
+  emptyTrash: () => request<{ ok: true; deleted: number }>('DELETE', '/trash'),
   revokeAll: (id: string) => request<ArtifactDto>('POST', `/artifacts/${seg(id)}/revoke-all`),
   createLink: (id: string, body: { label: string | null; expiresAt: string | null }) =>
     request<LinkDto>('POST', `/artifacts/${seg(id)}/links`, body),
@@ -91,7 +96,7 @@ export const api = {
   folderStats: (name: string, days = 30) => request<StatsDto>('GET', `/projects/${seg(name)}/stats?days=${days}`),
   folderPreview: (name: string) => request<{ url: string }>('GET', `/projects/${seg(name)}/preview`),
   deleteFolder: (name: string) => request<{ ok: true; movedChildren: number }>('DELETE', `/projects/${seg(name)}`),
-  slug: (slug: string) => request<{ slug: string; valid: boolean; available: boolean }>('GET', `/slugs/${encodeURIComponent(slug)}`),
+  slug: (slug: string) => request<{ slug: string; valid: boolean; available: boolean; inTrash: boolean }>('GET', `/slugs/${encodeURIComponent(slug)}`),
 };
 
 // Opens the tab before the network call: otherwise the popup blocker catches it.

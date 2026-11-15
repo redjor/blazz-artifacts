@@ -15,6 +15,8 @@ export interface Config {
   contentBind: string;
   /** Language of visitor pages (HUB_LOCALE): en (default), fr, or auto (Accept-Language). */
   locale: LocaleSetting;
+  /** Days a deleted artifact stays in the trash before it is purged (TRASH_DAYS, 30); 0: deleted at once, no trash. */
+  trashDays: number;
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -28,6 +30,14 @@ function positiveInt(env: NodeJS.ProcessEnv, name: string, fallback: number): nu
   if (raw === undefined || raw === '') return fallback;
   const n = Number(raw);
   if (!Number.isInteger(n) || n <= 0) throw new Error(`${name} must be a positive integer`);
+  return n;
+}
+
+function boundedInt(env: NodeJS.ProcessEnv, name: string, fallback: number, max: number): number {
+  const raw = env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > max) throw new Error(`${name} must be an integer between 0 and ${max}`);
   return n;
 }
 
@@ -66,5 +76,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     adminBind: env.ADMIN_BIND || '127.0.0.1',
     contentBind: env.CONTENT_BIND || '127.0.0.1',
     locale: parseLocaleSetting(env.HUB_LOCALE),
+    trashDays: boundedInt(env, 'TRASH_DAYS', 30, 3650),
   };
 }
