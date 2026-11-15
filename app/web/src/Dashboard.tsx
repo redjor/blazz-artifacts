@@ -878,7 +878,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
             While selecting, the selection bar takes the tools' place and the row sticks under the top bar. */}
         <div className={`relative flex flex-wrap items-center gap-x-3 gap-y-3 ${selecting ? 'sticky top-14 z-20 -my-2 bg-canvas py-2' : ''}`}>
           {/* On a phone the selection bar takes the title's room (the top bar still names the page). */}
-          <h1 title={pageTitle} className={`order-1 min-w-0 grow basis-0 truncate ${selecting ? 'max-sm:sr-only' : ''} font-serif text-[2rem] leading-tight font-normal tracking-[-0.015em] sm:text-[2.25rem]`}>{pageTitle}</h1>
+          <h1 title={pageTitle} className={`order-1 min-w-0 grow basis-0 truncate ${selecting ? 'max-sm:sr-only' : ''} font-serif text-[2rem] leading-tight font-semibold tracking-[-0.02em] sm:text-[2.25rem]`}>{pageTitle}</h1>
 
           {searchOpen && (
             <label className="order-3 flex h-9 w-full items-center gap-2 rounded-full border border-line bg-surface px-3.5 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-ring sm:order-2 sm:w-56">

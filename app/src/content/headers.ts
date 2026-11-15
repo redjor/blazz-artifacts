@@ -12,4 +12,4 @@ export const framedBySelf = (csp: string) => csp.replace("frame-ancestors 'none'
  * frames accepts it (`frame-ancestors 'self'`); nothing active is allowed in it.
  */
 export const FRAME_PAGE_CSP =
-  "default-src 'none'; style-src 'unsafe-inline'; frame-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+  "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; frame-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";

@@ -27,7 +27,7 @@ export function Login({ onDone }: { onDone: () => void }) {
       <div className="absolute top-4 right-4"><LanguageSwitch /></div>
       <form onSubmit={submit} className="surface-raised w-full max-w-sm space-y-5 rounded-[24px] bg-surface p-7">
         <div>
-          <h1 className="font-serif text-[2rem] leading-tight font-normal tracking-[-0.015em]">{t('app.heading')}</h1>
+          <h1 className="font-serif text-[2rem] leading-tight font-semibold tracking-[-0.02em]">{t('app.heading')}</h1>
           <p className="mt-1 text-sm text-muted">{t('login.subtitle')}</p>
         </div>
         <label className="block space-y-1 text-sm">

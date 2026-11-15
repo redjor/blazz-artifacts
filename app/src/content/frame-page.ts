@@ -2,6 +2,7 @@
 // Served to browser navigations only; script-free and not sandboxed (see FRAME_PAGE_CSP).
 import { tr, type Locale } from '../i18n.ts';
 import { DARK, escapeHtml, LIGHT, SANS } from '../ingest/page.ts';
+import { FONT_FACES } from '../fonts.ts';
 import { BAR_CSS, BAR_HEIGHT, barLink, ICON_DOWNLOAD, ICON_OPEN, renderBar } from './bar.ts';
 
 export interface FramePageInput {
@@ -15,6 +16,7 @@ export interface FramePageInput {
 }
 
 const CSS = `
+${FONT_FACES}
 :root{${LIGHT}}
 @media (prefers-color-scheme:dark){:root{${DARK}}}
 *{box-sizing:border-box}

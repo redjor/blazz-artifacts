@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- One typeface everywhere: Figtree (SIL OFL 1.1), self-hosted, in the admin UI and on every visitor page (bar,
+  folder pages, Markdown and JSON reader, unlock and 404 pages); served by the content server at `/_fonts/`, never
+  from a third party. Already published Markdown and JSON documents get it after
+  `node src/scripts/rerender-documents.ts`.
 - Visitor bar: artifacts open under a slim top bar (folder path when opened from a folder, title, version, Original
   download for Markdown, JSON and PDF, Open alone); folder pages get the same bar with the theme switch. The artifact
   is framed on its signed path; scripts, link previews and `ARTIFACT_BAR=0` keep the direct redirect.

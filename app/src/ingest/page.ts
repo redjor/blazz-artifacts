@@ -1,3 +1,4 @@
+import { FONT_FACES, FONT_STACK } from '../fonts.ts';
 import { tr, type Locale } from '../i18n.ts';
 
 const ENTITIES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -7,12 +8,13 @@ export function escapeHtml(s: string): string {
 }
 
 const CSS = `
+${FONT_FACES}
 :root{color-scheme:light dark;--bg:#fff;--fg:#1f2328;--muted:#59636e;--border:#d1d9e0;--code:#f6f8fa;--link:#0969da;
 --kw:#cf222e;--str:#0a3069;--num:#0550ae;--com:#59636e;--fn:#8250df;--ti:#953800}
 @media (prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#9198a1;--border:#3d444d;--code:#151b23;--link:#4493f8;
 --kw:#ff7b72;--str:#a5d6ff;--num:#79c0ff;--com:#9198a1;--fn:#d2a8ff;--ti:#ffa657}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 ${FONT_STACK}}
 main{max-width:860px;margin:0 auto;padding:32px 16px 64px}
 header{display:flex;justify-content:flex-end;margin-bottom:16px;font-size:14px}
 a{color:var(--link)}
@@ -44,10 +46,12 @@ export const LIGHT = `--bg:#faf7f2;--fg:#1c1917;--soft:#2e2a27;--muted:#78716c;-
 export const DARK = `--bg:#161312;--fg:#efebe6;--soft:#ddd7d0;--muted:#a39b93;--rule:#34302d;--band:#272422;--code:#211e1c;--link:#f0a37a;
 --kw:#ff8b7b;--str:#a5c8ff;--num:#c9a7ff;--com:#a39b93;--fn:#f0b48a;--ti:#e8c27a;--img:oklch(1 0 0 / 0.1);color-scheme:dark`;
 
-export const SERIF = `"Iowan Old Style","Palatino Linotype",Palatino,Charter,"Bitstream Charter","Source Serif Pro",Georgia,Cambria,serif`;
-export const SANS = `ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif`;
+// One typeface everywhere: Figtree (src/fonts.ts). SERIF names the reading and display roles, now set in Figtree too.
+export const SERIF = FONT_STACK;
+export const SANS = FONT_STACK;
 
 const ARTICLE_CSS = `
+${FONT_FACES}
 :root{${LIGHT}}
 html:has(#theme-toggle:checked){${DARK}}
 @media (prefers-color-scheme:dark){
@@ -56,7 +60,7 @@ html:has(#theme-toggle:checked){${LIGHT}}
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--fg);font:19px/1.7 ${SERIF};font-variant-numeric:oldstyle-nums;
+body{margin:0;background:var(--bg);color:var(--fg);font:18px/1.7 ${SERIF};
 text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
 .theme-toggle{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
 .page{max-width:68ch;margin:0 auto;padding:20px 24px 112px}
@@ -73,13 +77,13 @@ html:has(#theme-toggle:checked) .theme-btn .to-light{display:none}
 html:has(#theme-toggle:checked) .theme-btn .to-dark{display:inline}
 }
 .doc-head{margin:40px 0 44px;text-align:center}
-.doc-title{margin:0 auto;hyphens:manual;font-size:clamp(2.3rem,1.5rem + 3.2vw,3.4rem);line-height:1.12;font-weight:400;letter-spacing:-0.01em;text-wrap:balance}
+.doc-title{margin:0 auto;hyphens:manual;font-size:clamp(2.1rem,1.4rem + 3vw,3.1rem);line-height:1.12;font-weight:650;letter-spacing:-0.02em;text-wrap:balance}
 .prose{color:var(--soft)}
 .prose>:first-child{margin-top:0}
 .prose p,.prose ul,.prose ol,.prose blockquote,.prose pre,.prose table,.prose figure,.prose details{margin:0 0 1.15em}
-.prose h1,.prose h2,.prose h3,.prose h4{color:var(--fg);font-weight:400;text-wrap:balance}
-.prose h1,.prose h2{margin:2.2em 0 1.1em;text-align:center;font-style:italic;line-height:1.25}
-.prose h1{font-size:1.75em}.prose h2{font-size:1.55em}
+.prose h1,.prose h2,.prose h3,.prose h4{color:var(--fg);font-weight:600;letter-spacing:-0.01em;text-wrap:balance}
+.prose h1,.prose h2{margin:2.2em 0 1.1em;text-align:center;line-height:1.25}
+.prose h1{font-size:1.6em}.prose h2{font-size:1.4em}
 .prose h1::after,.prose h2::after{content:"";display:block;width:56px;height:2px;margin:.55em auto 0;background:var(--rule)}
 .prose h3{font-size:1.2em;margin:1.9em 0 .6em;font-weight:600;line-height:1.35}
 .prose h4{font-size:1em;margin:1.6em 0 .5em;font-weight:600;font-style:italic}

@@ -46,6 +46,9 @@ Share links: `GET /share/<token>` exchanges the token for a grant cookie and red
 address bar. Folder pages: `/d/<folder>`, cards enter through `/d/<folder>/a/<slug>`, which re-checks folder
 access and current membership before issuing the usual signed path.
 
+Fonts: visitor pages use Figtree, served by the content server itself (`/_fonts/<file>.woff2`, an allow-list, CORS
+open for sandboxed pages); the admin SPA bundles the same files. No third-party request.
+
 Artifact bar (design 10): a browser navigation (`Sec-Fetch-Dest: document`) to an entry gets a script-free frame
 page instead of the redirect: a top bar (folder path, title, version, Original, Open alone) and the artifact in an
 `<iframe>` on its signed path, which allows framing by the content origin only.

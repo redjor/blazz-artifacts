@@ -472,7 +472,7 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
             </div>
           </div>
 
-          <h2 id={titleId} className="mt-3 font-serif text-[1.75rem] leading-[1.15] font-normal tracking-[-0.015em] text-balance break-words">{view.title}</h2>
+          <h2 id={titleId} className="mt-3 font-serif text-[1.75rem] leading-[1.15] font-semibold tracking-[-0.02em] text-balance break-words">{view.title}</h2>
           <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted">
             <span className="inline-flex items-center gap-1.5"><KindIcon className="size-3.5" />{kindLabel(view.kind)}{view.version && <span className="tabular-nums"> · v{view.version.number}</span>}</span>
             <span aria-hidden="true">·</span>

@@ -32,7 +32,7 @@ export function TrashView({ items, days, folderTitle, pending, onRestore, onDele
   return (
     <>
       <div className="relative flex flex-wrap items-center gap-x-3 gap-y-3">
-        <h1 ref={heading} tabIndex={-1} className="min-w-0 grow basis-0 truncate font-serif text-[2rem] leading-tight font-normal tracking-[-0.015em] outline-none sm:text-[2.25rem]">
+        <h1 ref={heading} tabIndex={-1} className="min-w-0 grow basis-0 truncate font-serif text-[2rem] leading-tight font-semibold tracking-[-0.02em] outline-none sm:text-[2.25rem]">
           {t('trash.title')}
         </h1>
         {items.length > 0 && (

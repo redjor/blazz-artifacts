@@ -21,7 +21,7 @@ border-radius:6px;padding:4px 2px}
 .bar-path a:focus-visible{outline:2px solid var(--link);outline-offset:1px}
 @media (hover:hover){.bar-path a:hover{color:var(--fg);text-decoration:underline;text-underline-offset:3px}}
 .bar-sep{color:var(--rule);flex-shrink:0}
-.bar-title{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 17px/1.2 ${SERIF};letter-spacing:-0.005em}
+.bar-title{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 15px/1.2 ${SERIF};letter-spacing:-0.01em}
 .bar-version{flex-shrink:0;padding:2px 8px;border-radius:999px;background:var(--band);color:var(--muted);font-size:12px;
 font-variant-numeric:tabular-nums}
 .bar-actions{display:flex;align-items:center;gap:2px;flex-shrink:0}

@@ -109,4 +109,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/development.md](docs/developmen
 
 ## Licence
 
-[MIT](LICENSE)
+[MIT](LICENSE). The bundled Figtree font is under the SIL Open Font License 1.1 ([app/src/fonts/OFL.txt](app/src/fonts/OFL.txt)).

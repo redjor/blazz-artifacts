@@ -1,5 +1,6 @@
 import { tr, type Locale } from '../i18n.ts';
 import { DARK, escapeHtml, LIGHT, SANS, SERIF, typography } from '../ingest/page.ts';
+import { FONT_FACES } from '../fonts.ts';
 import { BAR_CSS, renderBar } from './bar.ts';
 import type { Kind, Visibility } from '../repo.ts';
 
@@ -45,6 +46,7 @@ const KIND_DARK = `--markdown-band:#1f2c56;--markdown-glyph:#b4c8ff;--html-band:
 --pdf-band:#481f1f;--pdf-glyph:#ffb4ab;--json-band:#42192d;--json-glyph:#f8afd0;--card:#1f1b19;--shadow:oklch(0 0 0 / 0.5)`;
 
 const CSS = `
+${FONT_FACES}
 :root{${LIGHT};${KIND_LIGHT}}
 html:has(#theme-toggle:checked){${DARK};${KIND_DARK}}
 @media (prefers-color-scheme:dark){
@@ -68,8 +70,8 @@ html:has(#theme-toggle:checked) .theme-btn .to-light{display:none}
 html:has(#theme-toggle:checked) .theme-btn .to-dark{display:inline-flex}
 }
 .head{max-width:62ch;margin:48px 0 56px}
-.title{margin:0;font:400 clamp(2.4rem,1.6rem + 3vw,3.6rem)/1.08 ${SERIF};letter-spacing:-0.015em;text-wrap:balance;hyphens:manual}
-.desc{margin:20px 0 0;color:var(--soft);font:19px/1.6 ${SERIF};text-wrap:pretty;white-space:pre-line}
+.title{margin:0;font:650 clamp(2.2rem,1.5rem + 2.8vw,3.3rem)/1.08 ${SERIF};letter-spacing:-0.025em;text-wrap:balance;hyphens:manual}
+.desc{margin:20px 0 0;color:var(--soft);font:18px/1.6 ${SERIF};text-wrap:pretty;white-space:pre-line}
 .count{margin:18px 0 0;color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums}
 .grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:44px 32px}
 .card{display:block;color:inherit;text-decoration:none;border-radius:14px;-webkit-tap-highlight-color:transparent}
@@ -86,7 +88,7 @@ ${(['markdown', 'html', 'site', 'pdf', 'json'] as Kind[]).map((k) => `.k-${k}{ba
 .card:hover .name{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px;text-decoration-color:var(--muted)}
 }
 @media (hover:hover) and (prefers-reduced-motion:no-preference){.card:hover .frame{translate:0 -3px}}
-.name{display:block;margin:16px 0 0;font:400 21px/1.3 ${SERIF};color:var(--fg);text-wrap:balance;overflow-wrap:anywhere}
+.name{display:block;margin:16px 0 0;font:550 18px/1.3 ${SERIF};letter-spacing:-0.01em;color:var(--fg);text-wrap:balance;overflow-wrap:anywhere}
 .meta{display:flex;flex-wrap:wrap;gap:4px 8px;margin:6px 0 0;color:var(--muted);font-size:14px;line-height:1.4}
 .meta span+span::before{content:"·";margin-right:8px}
 .grid.folders{margin-bottom:44px}
@@ -94,9 +96,9 @@ ${(['markdown', 'html', 'site', 'pdf', 'json'] as Kind[]).map((k) => `.k-${k}{ba
 .num{font-variant-numeric:tabular-nums}
 .preview{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin:12px 0 0;padding:12px 16px;border-radius:12px;background:var(--band);color:var(--soft);font-size:14px;line-height:1.45}
 .preview strong{color:var(--fg);font-weight:600}
-.empty{max-width:46ch;margin:0;padding:40px 0;border-top:1px solid var(--rule);color:var(--muted);font:19px/1.6 ${SERIF};font-style:italic}
+.empty{max-width:46ch;margin:0;padding:40px 0;border-top:1px solid var(--rule);color:var(--muted);font:18px/1.6 ${SERIF}}
 @media (max-width:640px){
-body{font-size:16px}.page{padding:0 20px 80px}.head{margin:28px 0 36px}.desc{font-size:17px}.grid{gap:36px}.name{font-size:19px}
+body{font-size:16px}.page{padding:0 20px 80px}.head{margin:28px 0 36px}.desc{font-size:17px}.grid{gap:36px}.name{font-size:17px}
 }
 @media print{.theme-toggle{display:none}body{background:#fff;color:#000}}
 `;

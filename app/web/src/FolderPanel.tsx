@@ -430,7 +430,7 @@ export function FolderDrawer({ name, summary, folders, initialTab = 'info', onCl
         <div className="-mx-2 flex items-center justify-end">
           <button type="button" onClick={() => requestClose()} aria-label={t('common.close')} data-tip={t('common.closeTip')} className={`${iconButton} tip-end`}><CloseIcon /></button>
         </div>
-        <h2 id={titleId} className="mt-1 font-serif text-[1.75rem] leading-[1.15] font-normal tracking-[-0.015em] text-balance break-words">{displayTitle}</h2>
+        <h2 id={titleId} className="mt-1 font-serif text-[1.75rem] leading-[1.15] font-semibold tracking-[-0.02em] text-balance break-words">{displayTitle}</h2>
         <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted">
           <span className="inline-flex items-center gap-1.5"><FolderIcon className="size-3.5" /><span className="font-mono">/d/{f.name}</span></span>
           <span aria-hidden="true">·</span>

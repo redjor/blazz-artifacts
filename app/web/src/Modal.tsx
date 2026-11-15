@@ -15,7 +15,7 @@ export function Modal({ title, onClose, children, wide = false }: { title: strin
       <div role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={(e) => e.stopPropagation()}
         className={`enter-rise surface-raised max-h-[92dvh] w-full overflow-y-auto overscroll-contain rounded-t-[24px] bg-surface p-5 sm:rounded-[24px] sm:p-6 ${wide ? 'sm:max-w-2xl' : 'sm:max-w-lg'}`}>
         <div className="mb-5 flex items-start justify-between gap-4">
-          <h2 id={titleId} className="min-w-0 pt-0.5 font-serif text-2xl leading-tight font-normal tracking-[-0.01em] text-balance break-words">{title}</h2>
+          <h2 id={titleId} className="min-w-0 pt-0.5 font-serif text-2xl leading-tight font-semibold tracking-[-0.015em] text-balance break-words">{title}</h2>
           <button type="button" onClick={onClose} aria-label={t('common.close')} className="-mt-1 -mr-1 grid size-9 shrink-0 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-ink"><CloseIcon /></button>
         </div>
         {children}

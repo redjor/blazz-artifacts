@@ -17,6 +17,7 @@ import {
 } from '../repo.ts';
 import { thumbPath, versionDir } from '../storage.ts';
 import { THUMB_MIME } from '../thumbs.ts';
+import { fontFile } from '../fonts.ts';
 import { createPreviewCache } from '../preview.ts';
 import { createVisitRecorder, isBot, isLinkPreview } from '../visits.ts';
 import { checkFolderPreview, checkFolderThumb, decodeFolderGrant, encodeFolderGrant, effectiveFolderAccess, folderCookieName, signFolderThumb } from './folder-grant.ts';
@@ -377,6 +378,14 @@ export function createContentApp(deps: ContentDeps): Hono {
       return notFound(c);
     }
     return c.body(new Uint8Array(data), 200, { 'Content-Type': THUMB_MIME[v.thumb_type], 'Cache-Control': 'private, max-age=3600' });
+  });
+
+  // Figtree for the visitor pages (src/fonts.ts): an allow-list of files, open to every origin (sandboxed pages have
+  // an opaque one and fonts are fetched in CORS mode).
+  app.get('/_fonts/:file', (c) => {
+    const data = fontFile(c.req.param('file'));
+    if (!data) return notFound(c);
+    return c.body(new Uint8Array(data), 200, { 'Content-Type': 'font/woff2', 'Cache-Control': 'public, max-age=604800', 'Access-Control-Allow-Origin': '*' });
   });
 
   // Image of a link preview: a short signed URL, no cookie (design 06). Dead once the version, the access epoch or the
