@@ -1,5 +1,5 @@
 import { errorText, t } from './i18n/index.ts';
-import type { ArtifactDetail, ArtifactDto, FolderDetail, FolderSummary, LabelCount, LinkDto, StatsDto, TrashItemDto, VersionDto, Visibility } from './types.ts';
+import type { ArtifactDetail, ArtifactDto, BulkOp, FolderDetail, FolderSummary, LabelCount, LinkDto, StatsDto, TrashItemDto, VersionDto, Visibility } from './types.ts';
 
 let csrf = '';
 const seg = encodeURIComponent; // identifiers inside paths
@@ -68,6 +68,9 @@ export const api = {
   restoreFromTrash: (id: string) => request<ArtifactDto>('POST', `/artifacts/${seg(id)}/restore`),
   deleteForGood: (id: string) => request<{ ok: true }>('DELETE', `/trash/${seg(id)}`),
   emptyTrash: () => request<{ ok: true; deleted: number }>('DELETE', '/trash'),
+  /** One operation on many artifacts, all or nothing (design 05). `trashed` only for `trash`. */
+  bulk: (ids: string[], op: BulkOp, value?: string | string[] | null) =>
+    request<{ ok: true; count: number; trashed?: boolean }>('POST', '/artifacts/bulk', value === undefined ? { ids, op } : { ids, op, value }),
   revokeAll: (id: string) => request<ArtifactDto>('POST', `/artifacts/${seg(id)}/revoke-all`),
   createLink: (id: string, body: { label: string | null; expiresAt: string | null }) =>
     request<LinkDto>('POST', `/artifacts/${seg(id)}/links`, body),

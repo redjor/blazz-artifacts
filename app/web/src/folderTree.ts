@@ -63,6 +63,13 @@ export function sharedVia(folders: TreeFolder[], name: string): TreeFolder | nul
   return ancestorsOf(folders, name).find((a) => a.visibility !== 'private') ?? null;
 }
 
+/** Folder whose access opens `name` to visitors: itself when shared, else its highest shared ancestor; null if none. */
+export function openerOf(folders: TreeFolder[], name: string): TreeFolder | null {
+  const self = folders.find((x) => x.name === name);
+  if (!self) return null;
+  return self.visibility !== 'private' ? self : sharedVia(folders, name);
+}
+
 export function treeOptions(folders: TreeFolder[]): { folder: TreeFolder; depth: number }[] {
   const out: { folder: TreeFolder; depth: number }[] = [];
   const walk = (parent: string | null, depth: number) => {

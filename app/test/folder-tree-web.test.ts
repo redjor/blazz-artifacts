@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ancestorsOf, childrenOf, descendantsOf, folderPath, moveTargets, sharedVia, subtreeExposure, survivingParent, treeOptions, type TreeFolder } from '../web/src/folderTree.ts';
+import { ancestorsOf, childrenOf, descendantsOf, folderPath, moveTargets, openerOf, sharedVia, subtreeExposure, survivingParent, treeOptions, type TreeFolder } from '../web/src/folderTree.ts';
 
 const f = (name: string, parent: string | null, o: Partial<TreeFolder> = {}): TreeFolder =>
   ({ name, parent, title: null, visibility: 'private', count: 0, privateCount: 0, position: null, ...o });
@@ -25,6 +25,10 @@ test('exposure and shared-via', () => {
   assert.equal(sharedVia(FOLDERS, 'd')!.name, 'a');
   assert.equal(sharedVia(FOLDERS, 'e'), null);
   assert.equal(sharedVia(FOLDERS, 'a'), null, 'own visibility is not "via"');
+  assert.equal(openerOf(FOLDERS, 'a')!.name, 'a', 'shared itself');
+  assert.equal(openerOf(FOLDERS, 'c')!.name, 'a', 'shared through an ancestor');
+  assert.equal(openerOf(FOLDERS, 'e'), null);
+  assert.equal(openerOf(FOLDERS, 'inconnu'), null);
 });
 
 test('move targets exclude self, descendants and too-deep parents', () => {

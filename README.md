@@ -23,6 +23,7 @@ _To be added before the first public release:_
 - **Folders**: group artifacts, share a folder as a script-free page (`/d/<folder>`) with its own access mode, ordering, description and links.
 - **Trash**: a deleted artifact is gone for visitors at once but can be restored for 30 days (`TRASH_DAYS`), undo included.
 - **Gallery**: real thumbnails captured by the CLI at publish time, kind filters, tags, search, pinning, list or grid, keyboard navigation and shortcuts.
+- **Bulk actions**: select artifacts to move, tag, change visibility, pin or trash them at once, with the same safeguards and an undo.
 - **Privacy-friendly audience stats**: views and daily unique visitors counted server side, no script injected in artifacts, no tracking cookie, no IP or User-Agent stored.
 - **Browser storage simulation** for mockups that use `localStorage`/`sessionStorage` inside the sandbox.
 - **Small footprint**: one Node process, SQLite (`node:sqlite`), about 50 MB of RAM at rest; runs happily on a NAS.

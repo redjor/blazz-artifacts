@@ -86,7 +86,8 @@ message>", "params"?: {…} }`; codes are listed in `app/src/errors.ts`.
 | GET | `/artifacts` | List; `?slug=` exact match, `?project=`, `?tag=` (repeatable) |
 | POST | `/artifacts` | Create (multipart: `file`, `title`, `slug`, `visibility`, `code`, `memoryStorage`, `project`, `tags`) |
 | GET, PATCH, DELETE | `/artifacts/:id` | Detail with links; update title, slug, visibility, code, memoryStorage, project, tags, pinned; delete (to the trash, or for good with `TRASH_DAYS=0`) |
-| POST | `/artifacts/:id/restore` | Bring a trashed artifact back (without a folder if its folder is gone) |
+| POST | `/artifacts/bulk` | One operation on 1 to 500 artifacts in one transaction, all or nothing (`ids`, `op`: `move`, `addTags`, `removeTags`, `visibility` without `code`, `pin`, `unpin`, `trash`, `restore`; `value`) |
+| POST | `/artifacts/:id/restore` | Bring a trashed artifact back (without a folder if its folder was deleted meanwhile) |
 | GET, DELETE | `/trash` | Trashed artifacts with their purge date; empty the trash |
 | DELETE | `/trash/:id` | Delete one trashed artifact for good |
 | PUT | `/artifacts/:id/content` | New version (multipart `file`) |

@@ -13,12 +13,12 @@ import { staticLocale } from '../i18n.ts';
 import { newId } from '../ids.ts';
 import { ingestFile, stripExtension, type UploadedFile } from '../ingest/ingest.ts';
 import {
-  activateVersion, bumpEpoch, bumpProjectEpoch, deleteProject, getArtifact, getArtifactBySlug, getProject, getTrashedArtifact, getVersion, insertArtifactWithVersion,
+  activateVersion, bumpEpoch, bumpProjectEpoch, deleteArtifact, deleteProject, getArtifact, getArtifactBySlug, getProject, getTrashedArtifact, getVersion, insertArtifactWithVersion,
   listFolderArtifacts, listFolderLinks, listFolders, listVersions, projectExists, recentProjectArtifacts, renameProject, restoreVersion, revokeFolderLink, setProjectOrder,
   setVersionThumb, getTags, insertLink, listArtifacts, listLinks, listTagCounts, listTrash, restoreArtifact, revokeLink, setPinned, setTags, slugHolder, trashArtifact,
   updateArtifact, upsertProject, VISIBILITIES, type Artifact, type ArtifactPatch, type TrashedArtifact, type Project, type ProjectPatch, type ShareLink, type Version, type Visibility,
 } from '../repo.ts';
-import { normalizeLabel, normalizeTags } from '../labels.ts';
+import { MAX_TAGS, normalizeLabel, normalizeTags } from '../labels.ts';
 import { tx } from '../db.ts';
 import { isValidSlug, slugify } from '../slug.ts';
 import { pruneVersions, removeArtifactFiles, thumbPath, THUMB_TYPES, tmpRoot, versionDir } from '../storage.ts';
@@ -30,6 +30,11 @@ import type { AdminEnv } from './auth.ts';
 import { createPreviewCache } from './preview.ts';
 
 export interface ApiDeps { db: Db; cfg: Config; keys: Keys; now?: () => number }
+
+/** Bulk actions (design 05): at most this many artifacts per request. */
+const BULK_MAX = 500;
+const BULK_OPS = ['move', 'addTags', 'removeTags', 'visibility', 'pin', 'unpin', 'trash', 'restore'] as const;
+type BulkOp = (typeof BULK_OPS)[number];
 
 function parseVisibility(v: unknown): Visibility {
   if (typeof v === 'string' && (VISIBILITIES as readonly string[]).includes(v)) return v as Visibility;
@@ -360,6 +365,76 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     const items = listTrash(db);
     for (const art of items) await deleteForGood(db, cfg.dataDir, art.id);
     return c.json({ ok: true, deleted: items.length });
+  });
+
+  // Bulk actions (design 05): one operation on many artifacts in one transaction, all or nothing. Each operation
+  // does what its single route does (epoch, pin date, updated_at); artifacts it would not change are left untouched.
+  api.post('/artifacts/bulk', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const ids = body.ids;
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > BULK_MAX || ids.some((id) => typeof id !== 'string') || new Set(ids).size !== ids.length) {
+      throw new HttpError(400, 'invalid_bulk_ids', { max: BULK_MAX });
+    }
+    const op = body.op;
+    if (!(BULK_OPS as readonly unknown[]).includes(op)) throw new HttpError(400, 'invalid_bulk_op');
+    // Values are checked before the transaction.
+    let project: string | null = null;
+    if (op === 'move') {
+      if (body.value === undefined) throw new HttpError(400, 'invalid_project');
+      project = parseProject(body.value);
+    }
+    let tags: string[] = [];
+    if (op === 'addTags' || op === 'removeTags') {
+      tags = parseTags(body.value);
+      if (tags.length === 0) throw new HttpError(400, 'invalid_tags');
+    }
+    let visibility: Visibility = 'private';
+    if (op === 'visibility') {
+      visibility = parseVisibility(body.value);
+      if (visibility === 'code') throw new HttpError(400, 'bulk_no_code');
+    }
+    const dropTags = new Set(tags);
+    const forGood = op === 'trash' && cfg.trashDays === 0;
+    const touch = (id: string) => updateArtifact(db, id, {}, false);
+
+    tx(db, () => {
+      const arts = (ids as string[]).map((id) => (op === 'restore' ? getTrashedArtifact(db, id) : getArtifact(db, id)));
+      if (arts.some((a) => !a)) throw new HttpError(404, 'artifact_not_found');
+      for (const art of arts as Artifact[]) {
+        switch (op as BulkOp) {
+          case 'move':
+            if (art.project !== project) updateArtifact(db, art.id, { project }, false);
+            break;
+          case 'addTags':
+          case 'removeTags': {
+            const current = getTags(db, art.id);
+            const next = op === 'addTags' ? normalizeTags([...current, ...tags]) : current.filter((t) => !dropTags.has(t));
+            if (!next) throw new HttpError(400, 'too_many_tags', { title: art.title, max: MAX_TAGS });
+            if (next.join() === current.join()) break;
+            setTags(db, art.id, next);
+            touch(art.id);
+            break;
+          }
+          case 'visibility':
+            if (art.visibility !== visibility) updateArtifact(db, art.id, { visibility, code_hash: null }, true);
+            break;
+          case 'pin':
+          case 'unpin':
+            setPinned(db, art.id, op === 'pin');
+            break;
+          case 'trash':
+            if (forGood) deleteArtifact(db, art.id);
+            else trashArtifact(db, art.id);
+            break;
+          case 'restore':
+            restoreArtifact(db, art.id);
+            break;
+        }
+      }
+    });
+    // Files go once the rows are gone (as deleteForGood does), outside the transaction.
+    if (forGood) for (const id of ids as string[]) await removeArtifactFiles(cfg.dataDir, id);
+    return c.json({ ok: true, count: ids.length, ...(op === 'trash' ? { trashed: !forGood } : {}) });
   });
 
   api.post('/artifacts/:id/links', async (c) => {

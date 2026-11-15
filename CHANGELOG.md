@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Bulk actions: select artifacts (check on hover, “Select” in the card menu, `X`, `Ctrl/Cmd+A`) and move, tag,
+  change the visibility, pin or trash them in one all-or-nothing request (`POST /api/artifacts/bulk`). Moving into a
+  shared folder and making artifacts public ask one confirmation; a bulk trash has one undo for the whole batch.
+- Restoring from the trash puts an artifact back in its folder even when the trash had emptied that folder; a folder
+  deleted meanwhile still sends it back without a folder.
 - Trash: deleting an artifact moves it to the trash for 30 days (`TRASH_DAYS`), with an undo; it is gone for
   visitors at once and keeps its address until it is restored or purged. `/trash` lists, restores and empties.
 - Sub-folders: folders can be nested up to 4 levels; access to a folder opens its sub-folders.

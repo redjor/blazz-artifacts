@@ -10,6 +10,8 @@ export interface CardActions {
   /** Existing folders (names), targets of “Move to…”. */
   folders: string[];
   onMove: (project: string | null) => void; onNewFolder: () => void;
+  /** Bulk selection (design 05): whether this artifact is selected, and the toggle. */
+  checked: boolean; onToggleSelect: () => void;
 }
 
 /** Drag type of a card dropped on a folder (lowercase: dataTransfer.types normalises it). */
@@ -20,7 +22,7 @@ const chip = 'bg-black/65 text-white shadow-sm ring-1 ring-white/15';
 
 const menuItem = 'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-surface-2 aria-disabled:cursor-default aria-disabled:hover:bg-transparent';
 
-export function ActionsMenu({ a, onManage, onPreview, onCopy, onShare, onTogglePin, folders, onMove, onNewFolder, onOpenChange, triggerClass, tabIndex }: CardActions & {
+export function ActionsMenu({ a, onManage, onPreview, onCopy, onShare, onTogglePin, folders, onMove, onNewFolder, checked, onToggleSelect, onOpenChange, triggerClass, tabIndex }: CardActions & {
   a: ArtifactDto; onOpenChange?: (o: boolean) => void; triggerClass: string; tabIndex?: number;
 }) {
   const priv = a.visibility === 'private';
@@ -59,6 +61,9 @@ export function ActionsMenu({ a, onManage, onPreview, onCopy, onShare, onToggleP
           <button type="button" className={menuItem} onClick={() => { close(); onShare(); }}><ShareIcon className="size-4 text-muted" />{t('common.share7')}</button>
           <button type="button" className={menuItem} onClick={() => { close(); onTogglePin(); }}>
             <PinIcon className="size-4 text-muted" />{a.pinned ? t('card.unpin') : t('card.pin')}
+          </button>
+          <button type="button" className={menuItem} onClick={() => { close(); onToggleSelect(); }}>
+            <CheckIcon className="size-4 text-muted" />{checked ? t('card.deselect') : t('card.select')}
           </button>
           <button type="button" className={menuItem} aria-expanded={moveOpen} aria-controls={moveOpen ? moveId : undefined} onClick={() => setMoveOpen(!moveOpen)}>
             <FolderIcon className="size-4 text-muted" /><span className="flex-1">{t('card.moveTo')}</span>
@@ -197,16 +202,40 @@ function Sheet({ a }: { a: ArtifactDto }) {
   );
 }
 
-export function ArtifactCard({ a, tabbable, onFocusCard, ...actions }: CardActions & { a: ArtifactDto; tabbable: boolean; onFocusCard: () => void }) {
+/**
+ * Selection check (design 05): shown on hover or focus, always while selecting; hidden on touch screens until then
+ * (“Select” in the menu is the way in). Mouse only: the card itself, the `X` key and the menu do the same for
+ * keyboards and screen readers, so it stays out of the tab order and of the accessibility tree.
+ */
+export function SelectCheck({ checked, selecting, onToggle, className, onThumb = true }: {
+  checked: boolean; selecting: boolean; onToggle: () => void; className: string;
+  /** Over a thumbnail (dark badge, like the others) rather than over the list's kind tile. */
+  onThumb?: boolean;
+}) {
+  const shown = selecting ? 'opacity-100' : 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:hidden';
+  const look = checked ? 'bg-ink text-canvas' : onThumb ? chip : 'bg-surface-2';
+  return (
+    <button type="button" aria-hidden="true" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={onToggle}
+      className={`grid place-items-center rounded-lg transition-opacity ${look} ${shown} ${className}`}>
+      {checked ? <CheckIcon className="size-4" /> : <span className={`size-4 rounded-[5px] border-[1.5px] ${onThumb ? 'border-white/85' : 'border-muted'}`} />}
+    </button>
+  );
+}
+
+export function ArtifactCard({ a, tabbable, onFocusCard, selecting, ...actions }: CardActions & { a: ArtifactDto; tabbable: boolean; onFocusCard: () => void; selecting: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [thumb, onThumbError] = useThumbnail(a.thumbnailUrl);
+  const { checked } = actions;
+  // The check sits where the version badge is: the badge slides right while the check shows.
+  const badgeLeft = selecting ? 'left-[3.25rem]' : 'left-3 group-focus-within:left-[3.25rem] group-hover:left-[3.25rem] [@media(hover:none)]:left-3';
   return (
     <li className={`group relative min-w-0 ${menuOpen ? 'z-20' : ''}`}>
-      <button type="button" data-static data-card={a.id} tabIndex={tabbable ? 0 : -1} onFocus={onFocusCard} onClick={actions.onPreview}
-        draggable onDragStart={(e) => { e.dataTransfer.setData(CARD_DRAG_TYPE, a.id); e.dataTransfer.effectAllowed = 'move'; }}
-        aria-label={artifactOpenLabel(a)}
-        aria-keyshortcuts="E"
-        className="card block w-full overflow-hidden rounded-2xl border border-line bg-surface text-left transition-[border-color] hover:border-line-strong">
+      {/* While selecting, a click toggles the card instead of opening it (aria-pressed tells its state). */}
+      <button type="button" data-static data-card={a.id} tabIndex={tabbable ? 0 : -1} onFocus={onFocusCard} onClick={selecting ? actions.onToggleSelect : actions.onPreview}
+        draggable={!selecting} onDragStart={(e) => { e.dataTransfer.setData(CARD_DRAG_TYPE, a.id); e.dataTransfer.effectAllowed = 'move'; }}
+        aria-label={selecting ? t('select.check', { title: a.title }) : artifactOpenLabel(a)} aria-pressed={selecting ? checked : undefined}
+        aria-keyshortcuts="E X"
+        className={`card block w-full overflow-hidden rounded-2xl border bg-surface text-left transition-[border-color] ${checked ? 'border-ink ring-1 ring-ink' : 'border-line hover:border-line-strong'}`}>
         <span className="relative block">
           <span aria-hidden="true" className={`band kind-${a.kind} @container relative block aspect-[2/1] overflow-hidden`}>
             <span className="sheet-back absolute top-[8.5%] right-[10.5%] left-[12.5%] h-full" />
@@ -215,7 +244,7 @@ export function ArtifactCard({ a, tabbable, onFocusCard, ...actions }: CardActio
             </span>
           </span>
           {a.version && (
-            <span className={`absolute top-3 left-3 rounded-full px-2 py-0.5 text-[12px] leading-5 font-medium tabular-nums ${chip}`}>
+            <span className={`absolute top-3 rounded-full px-2 py-0.5 text-[12px] leading-5 font-medium tabular-nums transition-[left] ${badgeLeft} ${chip}`}>
               <span className="sr-only">{t('card.versionSr')}</span>v{a.version.number}
             </span>
           )}
@@ -231,6 +260,7 @@ export function ArtifactCard({ a, tabbable, onFocusCard, ...actions }: CardActio
           <MetaLine a={a} className="mt-0.5" />
         </span>
       </button>
+      <SelectCheck checked={checked} selecting={selecting} onToggle={actions.onToggleSelect} className="absolute top-3 left-3 size-8" />
       <div className={`absolute top-3 right-3 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${menuOpen ? 'opacity-100' : 'opacity-0'}`}>
         <ActionsMenu a={a} {...actions} onOpenChange={setMenuOpen} tabIndex={tabbable ? 0 : -1}
           triggerClass={`grid size-8 place-items-center rounded-lg ${chip} hover:bg-black/80`} />

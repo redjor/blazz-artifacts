@@ -193,14 +193,17 @@ export function projectExists(db: Db, name: string): boolean {
 
 /**
  * Deletes the sheet (and so its folder links and statistics); artifacts stay in their project. Direct sub-folders move
- * to the deleted sheet's parent (or the root) first. Opens its own transaction.
+ * to the deleted sheet's parent (or the root) first. When no live artifact keeps the folder alive, the folder is gone:
+ * its trashed artifacts are detached so that restoring one does not bring it back. Opens its own transaction.
  */
 export function deleteProject(db: Db, name: string): boolean {
   return tx(db, () => {
     const sheet = getProject(db, name);
     if (!sheet) return false;
     db.prepare('UPDATE projects SET parent_name = ?, position = NULL, updated_at = ? WHERE parent_name = ?').run(sheet.parent_name, nowIso(), name);
-    return Number(db.prepare('DELETE FROM projects WHERE name = ?').run(name).changes) > 0;
+    const deleted = Number(db.prepare('DELETE FROM projects WHERE name = ?').run(name).changes) > 0;
+    if (!projectExists(db, name)) db.prepare('UPDATE artifacts SET project = NULL, project_position = NULL WHERE project = ? AND deleted_at IS NOT NULL').run(name);
+    return deleted;
   });
 }
 
@@ -317,18 +320,14 @@ export function slugHolder(db: Db, slug: string): { id: string; trashed: boolean
 }
 
 /**
- * Brings a trashed artifact back as it was. Its folder is kept if it still exists (a sheet or another live artifact),
- * otherwise it comes back without a folder. Undefined if it is not in the trash.
+ * Brings a trashed artifact back as it was, in its folder. A folder emptied by the trash comes back with it (undoing a
+ * batch must not scatter it); a folder deleted since has already detached its trashed artifacts (deleteProject), so
+ * they come back without a folder. Undefined if it is not in the trash. No transaction of its own: bulk restore runs
+ * it inside one.
  */
 export function restoreArtifact(db: Db, id: string): Artifact | undefined {
-  return tx(db, () => {
-    const art = getTrashedArtifact(db, id);
-    if (!art) return undefined;
-    const project = art.project !== null && projectExists(db, art.project) ? art.project : null;
-    db.prepare('UPDATE artifacts SET deleted_at = NULL, project = ?, project_position = CASE WHEN ? IS NULL THEN NULL ELSE project_position END WHERE id = ?')
-      .run(project, project, id);
-    return getArtifact(db, id);
-  });
+  const changed = Number(db.prepare('UPDATE artifacts SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL').run(id).changes) > 0;
+  return changed ? getArtifact(db, id) : undefined;
 }
 
 export function getVersion(db: Db, id: string): Version | undefined {

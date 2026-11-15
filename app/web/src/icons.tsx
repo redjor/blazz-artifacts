@@ -51,6 +51,8 @@ export const GripIcon = (p: P) => <Svg {...p}><path d="M9 6h.01M15 6h.01M9 12h.0
 export const ArrowUpIcon = (p: P) => <Svg {...p}><path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" /></Svg>;
 export const ArrowDownIcon = (p: P) => <Svg {...p}><path d="M12 5v14M6.5 13.5 12 19l5.5-5.5" /></Svg>;
 export const CheckIcon = (p: P) => <Svg {...p}><path d="m5.5 12.5 4 4 9-9" /></Svg>;
+export const TagIcon = (p: P) => <Svg {...p}><path d="M4 12.6V5.5A1.5 1.5 0 0 1 5.5 4h7.1a1.5 1.5 0 0 1 1.06.44l6 6a1.5 1.5 0 0 1 0 2.12l-7.1 7.1a1.5 1.5 0 0 1-2.12 0l-6-6A1.5 1.5 0 0 1 4 12.6z" /><path d="M8.5 8.5h.01" strokeWidth={2.4} /></Svg>;
+export const EyeIcon = (p: P) => <Svg {...p}><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" /><circle cx="12" cy="12" r="2.75" /></Svg>;
 
 // Types publiables.
 const DocumentIcon = (p: P) => <Svg {...p}><path d="M14 3.5H7.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z" /><path d="M14 3.5V8h4.5" /></Svg>;

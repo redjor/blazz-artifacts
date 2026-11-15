@@ -2,7 +2,7 @@ import { Link, useBlocker, useMatchRoute, useParams, useRouter, useSearch } from
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { api, copyDeferred, copyText, openPreview } from './api.ts';
-import { ActionsMenu, ArtifactCard, CARD_DRAG_TYPE, MetaLine } from './ArtifactCard.tsx';
+import { ActionsMenu, ArtifactCard, CARD_DRAG_TYPE, MetaLine, SelectCheck } from './ArtifactCard.tsx';
 import { ArtifactDrawer, type LinkActions } from './ArtifactPanel.tsx';
 import { FolderCard, FolderMenu, FolderRow, folderKey, folderOfKey, type FolderActions, type NamedFolder } from './FolderCard.tsx';
 import { copyFolderLink as copyFolderLinkOf, shareFolderFor7Days } from './folderLinks.ts';
@@ -13,12 +13,14 @@ import { LanguageSwitch } from './LanguageSwitch.tsx';
 import { CheckIcon, ChevronDownIcon, CloseIcon, FilterIcon, FolderPlusIcon, GridIcon, KIND_ICON, KeyboardIcon, ListIcon, LogoutIcon, PinIcon, PlusIcon, SearchIcon, TrashIcon, UploadIcon, VISIBILITY_ICON } from './icons.tsx';
 import { hasOpenLayer, isEditable } from './layers.ts';
 import { Popover, type PopoverHandle } from './Popover.tsx';
-import { ancestorsOf, childrenOf, folderPath, sharedVia, survivingParent, treeOptions } from './folderTree.ts';
+import { ancestorsOf, childrenOf, folderPath, openerOf, sharedVia, survivingParent, treeOptions, type TreeFolder } from './folderTree.ts';
 import { FolderBreadcrumb } from './FolderBreadcrumb.tsx';
 import { NewFolderDialog } from './NewFolderDialog.tsx';
 import { PublishDialog } from './PublishDialog.tsx';
+import { SelectionBar, type BulkVisibility, type TagsOp } from './SelectionBar.tsx';
 import { TrashView } from './TrashView.tsx';
-import type { ArtifactDto, FolderSummary, Kind, LabelCount, TrashItemDto, Visibility } from './types.ts';
+import type { ArtifactDto, BulkOp, FolderSummary, Kind, LabelCount, TrashItemDto, Visibility } from './types.ts';
+import { menuItem, TOOL_PANEL, TOOL_WRAP, toolButton } from './ui.ts';
 
 // Current folder: its name, null at the root, “~none” on /unfiled (“~” is not a valid label character).
 const NONE = '~none';
@@ -69,12 +71,6 @@ const FOLDER_COMPARE: Record<Sort, (x: NamedFolder, y: NamedFolder) => number> =
   kind: folderByRecent,
 };
 
-// Round 36 px tool button (title row tools, top bar account tools).
-const toolButton = 'tip tip-end relative grid size-9 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-ink aria-expanded:bg-surface-2 aria-expanded:text-ink aria-pressed:bg-surface-2 aria-pressed:text-ink';
-// Toolbar menus: on mobile, anchored to the full toolbar width (never off screen).
-const TOOL_WRAP = 'relative max-sm:static';
-const TOOL_PANEL = 'max-sm:inset-x-0';
-const menuItem = 'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-surface-2';
 const chip = (on: boolean) =>
   `inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] ${on ? 'bg-ink text-canvas' : 'bg-surface-2 text-ink hover:bg-surface-3'}`;
 
@@ -84,6 +80,8 @@ const SHORTCUTS: { keys: (string | MessageKey)[]; label: MessageKey }[] = [
   { keys: ['←', '↑', '→', '↓'], label: 'shortcut.move' },
   { keys: ['key.enter'], label: 'shortcut.open' },
   { keys: ['E'], label: 'shortcut.manage' },
+  { keys: ['X'], label: 'shortcut.select' },
+  { keys: ['Ctrl/⌘', 'A'], label: 'shortcut.selectAll' },
   { keys: ['↑', '↓'], label: 'shortcut.panel' },
   { keys: ['key.esc'], label: 'shortcut.close' },
   { keys: ['?'], label: 'shortcut.help' },
@@ -111,8 +109,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const [projects, setProjects] = useState<FolderSummary[]>([]);
   // Folder drawer; `tab`: “Share” on the folder page opens it on the access tab.
   const [folderOpen, setFolderOpen] = useState<{ name: string; tab?: TabId } | null>(null);
-  // “New folder” dialog; `moveId`: artifact to move into it once created (from a card's menu).
-  const [newFolder, setNewFolder] = useState<{ moveId: string | null } | null>(null);
+  // “New folder” dialog; `moveIds`: artifacts to move into it once created (a card's menu, the selection bar).
+  const [newFolder, setNewFolder] = useState<{ moveIds: string[] } | null>(null);
   const [tagCounts, setTagCounts] = useState<LabelCount[]>([]);
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [visibility, setVisibility] = useState<Visibility | null>(null);
@@ -127,6 +125,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   // Trash (design 04): `days` 0 means the hub deletes for good at once (no trash, a confirmation instead).
   const [trash, setTrash] = useState<{ days: number; items: TrashItemDto[] }>({ days: 30, items: [] });
   const [trashPending, setTrashPending] = useState<string | null>(null);
+  // Bulk selection (design 05): selected artifact ids. Selecting mode lasts while one of them is shown.
+  const [selection, setSelection] = useState<string[]>([]);
+  const bulkBusy = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const searchButton = useRef<HTMLButtonElement>(null);
@@ -285,6 +286,29 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   // Announced to screen readers while a search or a filter narrows the gallery.
   const resultsStatus = loaded && (q !== '' || filtersActive) ? (order.length === 0 ? t('gallery.noResults') : tn('gallery.results', order.length)) : '';
 
+  // Selection (design 05): only the selected artifacts still shown count; the effect below drops the others when the
+  // folder, the search or the filters change. “Select all” takes the shown artifacts, never hidden ones.
+  const pickedSet = new Set(selection);
+  const picked = visible.filter((a) => pickedSet.has(a.id));
+  const selecting = picked.length > 0;
+  const shownKey = inTrash ? '' : artifactOrder.join('\n');
+  useEffect(() => {
+    const shown = new Set(shownKey.split('\n'));
+    setSelection((cur) => {
+      const kept = cur.filter((id) => shown.has(id));
+      return kept.length === cur.length ? cur : kept;
+    });
+  }, [shownKey]);
+  const toggleSelect = (id: string) => setSelection((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  const selectAll = () => setSelection(artifactOrder);
+  const clearSelection = () => {
+    setSelection([]);
+    // The bar goes away: focus that was on it comes back to the gallery.
+    requestAnimationFrame(() => {
+      if (document.activeElement === document.body) (list.current?.querySelector<HTMLElement>('[data-card][tabindex="0"]') ?? gallery.current)?.focus();
+    });
+  };
+
   const projectNames = treeOptions(namedFolders).map((o) => o.folder.name);
   const sharedViaTitleOf = (f: NamedFolder) => { const v = f.visibility === 'private' ? sharedVia(namedFolders, f.name) : null; return v ? (v.title ?? v.name) : undefined; };
   const folderPaths = Object.fromEntries(namedFolders.map((f) => [f.name, folderPath(namedFolders, f.name)]));
@@ -339,8 +363,17 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
         runUndo();
         return;
       }
+      // Ctrl/Cmd+A outside a text field: select every artifact shown (design 05).
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'a' && !inTrash && artifactOrder.length > 0 && !isEditable(e.target) && !hasOpenLayer()) {
+        e.preventDefault();
+        selectAll();
+        return;
+      }
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || isEditable(e.target) || hasOpenLayer()) return;
-      if (e.key === '/') {
+      if (e.key === 'Escape' && selecting) {
+        e.preventDefault();
+        clearSelection();
+      } else if (e.key === '/') {
         if (inTrash) return; // no search on the trash page
         e.preventDefault();
         if (searchOpen) searchInput.current?.focus();
@@ -373,6 +406,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       const folder = folderOfKey(id);
       if (folder) setFolderOpen({ name: folder });
       else openArtifact(id);
+      return;
+    }
+    if (e.key === 'x' || e.key === 'X') {
+      if (folderOfKey(id)) return; // folders are not selectable
+      e.preventDefault();
+      toggleSelect(id);
       return;
     }
     const i = order.indexOf(id);
@@ -513,15 +552,87 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
    * explicit confirmation, as when sharing a folder that holds private artifacts. False when the owner declines.
    * Every folder change goes through it: card menu, drag and drop, the artifact panel.
    */
-  const confirmMove = (a: ArtifactDto, to: string | null): boolean => {
-    if (to === null || a.visibility === 'public') return true;
-    const dest = namedFolders.find((p) => p.name === to);
-    const opener = dest ? (dest.visibility !== 'private' ? dest : sharedVia(namedFolders, dest.name)) : null;
-    if (!opener) return true;
+  const confirmMove = (a: ArtifactDto, to: string | null): boolean => to === null || confirmMoveVia(a, openerOf(namedFolders, to));
+  /** Same safeguard, given the folder whose access opens the destination (null: nobody sees it through a folder). */
+  const confirmMoveVia = (a: ArtifactDto, opener: TreeFolder | null): boolean => {
+    if (!opener || a.visibility === 'public') return true;
     return window.confirm(t('confirm.moveToShared', {
       folder: opener.title ?? opener.name, folderVisibility: visibilityLabel(opener.visibility).toLowerCase(),
       title: a.title, visibility: visibilityLabel(a.visibility).toLowerCase(),
     }));
+  };
+  /** The safeguard for several artifacts at once: one confirmation that counts the non-public ones it exposes. */
+  const confirmBulkMove = (arts: ArtifactDto[], opener: TreeFolder | null): boolean => {
+    if (arts.length === 1) return confirmMoveVia(arts[0], opener);
+    const exposed = arts.filter((a) => a.visibility !== 'public').length;
+    if (!opener || exposed === 0) return true;
+    return window.confirm(tn('confirm.bulkMoveToShared', exposed, {
+      folder: opener.title ?? opener.name, folderVisibility: visibilityLabel(opener.visibility).toLowerCase(),
+    }));
+  };
+
+  /**
+   * One bulk request (all or nothing), then one reload. On success the selection clears and focus goes back to the
+   * first selected card (or its neighbour when it left the view). False when the request failed (nothing changed).
+   */
+  const applyBulk = async (ids: string[], op: BulkOp, value: string | string[] | null | undefined, notice: string | null): Promise<boolean> => {
+    if (bulkBusy.current || ids.length === 0) return false;
+    bulkBusy.current = true;
+    lastIndex.current = Math.max(0, order.indexOf(ids[0]));
+    try {
+      await api.bulk(ids, op, value);
+    } catch (e) {
+      setNotice((e as Error).message);
+      return false;
+    } finally {
+      bulkBusy.current = false;
+    }
+    setSelection([]);
+    await reload();
+    if (notice) setNotice(notice);
+    requestAnimationFrame(() => cardFocusTarget(ids[0])?.focus());
+    return true;
+  };
+  const idsOf = (arts: ArtifactDto[]) => arts.map((a) => a.id);
+
+  const bulkMove = async (to: string | null) => {
+    const arts = picked.filter((a) => a.project !== to);
+    if (arts.length === 0 || !confirmBulkMove(arts, to === null ? null : openerOf(namedFolders, to))) return;
+    await applyBulk(idsOf(arts), 'move', to, to ? tn('notice.bulkMoved', arts.length, { folder: to }) : tn('notice.bulkMovedOut', arts.length));
+  };
+  const bulkTags = (op: TagsOp, tags: string[]) => {
+    const text = tags.map((x) => `#${x}`).join(' ');
+    void applyBulk(idsOf(picked), op, tags, tn(op === 'addTags' ? 'notice.bulkTagged' : 'notice.bulkUntagged', picked.length, { tags: text }));
+  };
+  const bulkVisibility = async (v: BulkVisibility) => {
+    const arts = picked.filter((a) => a.visibility !== v);
+    if (arts.length === 0) return;
+    if (v === 'public' && !window.confirm(tn('confirm.bulkPublic', arts.length))) return;
+    await applyBulk(idsOf(arts), 'visibility', v, tn('notice.bulkVisibility', arts.length, { visibility: visibilityLabel(v).toLowerCase() }));
+  };
+  const bulkPin = (pin: boolean) => {
+    void applyBulk(idsOf(picked), pin ? 'pin' : 'unpin', undefined, tn(pin ? 'notice.bulkPinned' : 'notice.bulkUnpinned', picked.length));
+  };
+  /** To the trash with one undo for the whole batch; for good after a confirmation when the hub runs without a trash. */
+  const bulkTrash = async () => {
+    const ids = idsOf(picked);
+    const trashOn = trash.days > 0;
+    if (!trashOn && !window.confirm(tn('confirm.bulkDelete', ids.length))) return;
+    const done = await applyBulk(ids, 'trash', undefined, trashOn ? null : tn('notice.bulkDeleted', ids.length));
+    if (done && trashOn) setToast({ text: tn('notice.bulkTrashed', ids.length), undo: () => void undoBulkTrash(ids) });
+  };
+  /** Undo of a bulk trash: the batch comes back, still selected, for the action that was meant. */
+  const undoBulkTrash = async (ids: string[]) => {
+    try {
+      await api.bulk(ids, 'restore');
+    } catch (e) {
+      setNotice((e as Error).message);
+      return;
+    }
+    await reload();
+    setSelection(ids);
+    setNotice(tn('notice.bulkRestored', ids.length));
+    requestAnimationFrame(() => cardFocusTarget(ids[0])?.focus());
   };
 
   /** Moves an artifact (PATCH project), after the shared-folder safeguard. */
@@ -540,20 +651,22 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   };
 
   const onFolderCreated = async (f: { name: string }) => {
-    const moveId = newFolder?.moveId ?? null;
+    const moveIds = new Set(newFolder?.moveIds);
     setNewFolder(null);
-    const art = moveId ? items.find((a) => a.id === moveId) : undefined;
-    if (art) {
+    const arts = items.filter((a) => moveIds.has(a.id));
+    // The new folder is private, but inside a shared folder it is shared through it: same safeguard as a move.
+    if (arts.length > 0 && confirmBulkMove(arts, inFolder ? openerOf(namedFolders, inFolder) : null)) {
       try {
-        await api.update(art.id, { project: f.name });
-        setNotice(t('notice.folderCreatedWith', { name: f.name, title: art.title }));
+        await api.bulk(idsOf(arts), 'move', f.name);
+        setSelection([]);
+        setNotice(arts.length === 1 ? t('notice.folderCreatedWith', { name: f.name, title: arts[0].title }) : tn('notice.folderCreatedWithMany', arts.length, { name: f.name }));
       } catch (e) {
         setNotice(t('notice.folderCreatedError', { name: f.name, error: (e as Error).message }));
       }
     } else setNotice(t('notice.folderCreated', { name: f.name }));
     await reload();
     setProject(f.name);
-    if (!art) setFolderOpen({ name: f.name });
+    if (arts.length === 0) setFolderOpen({ name: f.name });
   };
 
   /** Enters a folder from its card: the search (which may have found it) closes, focus goes to the gallery. */
@@ -630,12 +743,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const actionsFor = (a: ArtifactDto) => ({
     folders: projectNames,
     onMove: (to: string | null) => void move(a, to),
-    onNewFolder: () => setNewFolder({ moveId: a.id }),
+    onNewFolder: () => setNewFolder({ moveIds: [a.id] }),
     onManage: () => openArtifact(a.id),
     onPreview: () => void run(() => openPreview(a.id)),
     onCopy: () => void copyLink(a),
     onShare: () => void share(a),
     onTogglePin: () => void togglePin(a),
+    checked: pickedSet.has(a.id),
+    onToggleSelect: () => toggleSelect(a.id),
   });
 
   const selectedSummary = selected ? items.find((a) => a.id === selected) : undefined;
@@ -715,9 +830,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
             onDelete={(a) => void deleteFromTrash(a)} onEmpty={() => void emptyTrash()}
             folderTitle={(name) => { const f = namedFolders.find((x) => x.name === name); return f ? folderTitle(f) : name; }} />
         ) : (<>
-        {/* Title on the left, tools on the right; the search slots in before the tools (or below on mobile). */}
-        <div className="relative flex flex-wrap items-center gap-x-3 gap-y-3">
-          <h1 title={pageTitle} className="order-1 min-w-0 grow basis-0 truncate font-serif text-[2rem] leading-tight font-normal tracking-[-0.015em] sm:text-[2.25rem]">{pageTitle}</h1>
+        {/* Title on the left, tools on the right; the search slots in before the tools (or below on mobile).
+            While selecting, the selection bar takes the tools' place and the row sticks under the top bar. */}
+        <div className={`relative flex flex-wrap items-center gap-x-3 gap-y-3 ${selecting ? 'sticky top-14 z-20 -my-2 bg-canvas py-2' : ''}`}>
+          {/* On a phone the selection bar takes the title's room (the top bar still names the page). */}
+          <h1 title={pageTitle} className={`order-1 min-w-0 grow basis-0 truncate ${selecting ? 'max-sm:sr-only' : ''} font-serif text-[2rem] leading-tight font-normal tracking-[-0.015em] sm:text-[2.25rem]`}>{pageTitle}</h1>
 
           {searchOpen && (
             <label className="order-3 flex h-9 w-full items-center gap-2 rounded-full border border-line bg-surface px-3.5 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-ring sm:order-2 sm:w-56">
@@ -729,6 +846,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
             </label>
           )}
 
+          {selecting ? (
+            <SelectionBar picked={picked} total={artifactOrder.length} folders={projectNames} paths={folderPaths} tagNames={tagCounts.map((x) => x.name)} trashOn={trash.days > 0}
+              className="order-3 w-full sm:order-3 sm:ml-auto sm:w-auto"
+              onMove={(to) => void bulkMove(to)} onNewFolder={() => setNewFolder({ moveIds: idsOf(picked) })} onTags={bulkTags}
+              onVisibility={(v) => void bulkVisibility(v)} onPin={bulkPin} onTrash={() => void bulkTrash()} onSelectAll={selectAll} onClear={clearSelection} />
+          ) : (
           <div className="order-2 ml-auto flex shrink-0 items-center gap-2 sm:order-3">
             <div role="toolbar" aria-label={t('gallery.toolbar')} className="flex items-center gap-1">
             <button ref={searchButton} type="button" aria-label={searchOpen ? t('gallery.closeSearch') : t('shortcut.search')} data-tip={searchOpen ? t('gallery.closeSearch') : t('gallery.searchTip')}
@@ -813,13 +936,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
                   <button type="button" aria-keyshortcuts="N" onClick={() => { close(); pick(ACCEPT_ALL); }} className={menuItem}>
                     <UploadIcon className="size-4 text-muted" /><span className="flex-1">{t('shortcut.publish')}</span><kbd>N</kbd>
                   </button>
-                  <button type="button" onClick={() => { close(); setNewFolder({ moveId: null }); }} className={menuItem}>
+                  <button type="button" onClick={() => { close(); setNewFolder({ moveIds: [] }); }} className={menuItem}>
                     <FolderPlusIcon className="size-4 text-muted" />{currentFolder ? t('gallery.newSubfolder') : t('common.newFolder')}
                   </button>
                 </>
               )}
             </Popover>
           </div>
+          )}
         </div>
 
         {filterCount > 0 && (
@@ -844,7 +968,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
         )}
 
         {/* Result count while a search or a filter narrows the gallery (always rendered: live regions must pre-exist). */}
-        <p role="status" className="sr-only">{resultsStatus}</p>
+        <p role="status" className="sr-only">{selecting ? tn('select.count', picked.length) : resultsStatus}</p>
         <section ref={gallery} tabIndex={-1} aria-label={project !== null ? t('gallery.folderSection', { name: pageTitle }) : t('gallery.published')} className="mt-8 outline-none sm:mt-10">
           {!loaded ? (loadError && (
             <div className="rounded-2xl border border-line px-6 py-16 text-center">
@@ -884,7 +1008,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
                 const card = folderKey(f.name);
                 return <FolderCard key={card} f={f} tabbable={card === tabbableId} onFocusCard={() => setFocusId(card)} sharedViaTitle={sharedViaTitleOf(f)} {...folderActionsFor(f)} />;
               })}
-              {visible.map((a) => <ArtifactCard key={a.id} a={a} tabbable={a.id === tabbableId} onFocusCard={() => setFocusId(a.id)} {...actionsFor(a)} />)}
+              {visible.map((a) => <ArtifactCard key={a.id} a={a} tabbable={a.id === tabbableId} onFocusCard={() => setFocusId(a.id)} selecting={selecting} {...actionsFor(a)} />)}
             </ul>
           ) : (
             <ul ref={list} onKeyDown={onListKey} className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
@@ -898,10 +1022,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
                 const tabbable = a.id === tabbableId;
                 const priv = a.visibility === 'private';
                 return (
-                  <li key={a.id} className="flex items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4">
-                    <button type="button" data-static data-card={a.id} tabIndex={tabbable ? 0 : -1} onFocus={() => setFocusId(a.id)} onClick={act.onPreview}
-                      draggable onDragStart={(e) => { e.dataTransfer.setData(CARD_DRAG_TYPE, a.id); e.dataTransfer.effectAllowed = 'move'; }}
-                      aria-label={artifactOpenLabel(a, false)} aria-keyshortcuts="E"
+                  <li key={a.id} className={`group relative flex items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4 ${act.checked ? 'bg-surface-2' : ''}`}>
+                    <button type="button" data-static data-card={a.id} tabIndex={tabbable ? 0 : -1} onFocus={() => setFocusId(a.id)} onClick={selecting ? act.onToggleSelect : act.onPreview}
+                      draggable={!selecting} onDragStart={(e) => { e.dataTransfer.setData(CARD_DRAG_TYPE, a.id); e.dataTransfer.effectAllowed = 'move'; }}
+                      aria-label={selecting ? t('select.check', { title: a.title }) : artifactOpenLabel(a, false)} aria-pressed={selecting ? act.checked : undefined} aria-keyshortcuts="E X"
                       className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left sm:gap-4">
                       <span className={`band kind-${a.kind} grid size-10 shrink-0 place-items-center rounded-lg`}><Icon className="glyph size-5" /></span>
                       <span className="min-w-0 flex-1">
@@ -914,6 +1038,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
                       </span>
                       <span className="hidden shrink-0 font-mono text-xs text-muted lg:block">/a/{a.slug}{a.version && ` · v${a.version.number}`}</span>
                     </button>
+                    {/* Over the kind tile: the check replaces it on hover, focus and while selecting. */}
+                    <SelectCheck checked={act.checked} selecting={selecting} onToggle={act.onToggleSelect} onThumb={false}
+                      className="absolute top-1/2 left-3 size-10 -translate-y-1/2 sm:left-4" />
                     <div className="hidden shrink-0 gap-1 text-sm sm:flex">
                       <button type="button" tabIndex={tabbable ? 0 : -1} onClick={() => { if (!priv) act.onCopy(); }} aria-disabled={priv || undefined}
                         data-tip={priv ? t('card.privateHint') : undefined} aria-label={priv ? t('gallery.copyLinkPrivate', { hint: t('card.privateHint') }) : t('common.copyLink')}

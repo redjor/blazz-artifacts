@@ -129,6 +129,16 @@ test('restauration : même slug et même dossier ; sans dossier si le dossier a 
   assert.deepEqual(((await (await h.call('/trash')).json()) as { items: unknown[] }).items, []);
 });
 
+test('restauration : un dossier sans fiche vidé par la corbeille revient avec l’artéfact', async () => {
+  const h = await trashSetup();
+  const art = await seedArtifact(h, { slug: 'seul', visibility: 'private', project: 'implicite', files: PAGE, kind: 'html' });
+  await h.call(`/artifacts/${art.id}`, { method: 'DELETE' });
+  const folders = (await (await h.call('/projects')).json()) as { name: string | null }[];
+  assert.ok(!folders.some((f) => f.name === 'implicite'), 'the folder is gone while its only artifact is in the trash');
+  const back = (await (await h.call(`/artifacts/${art.id}/restore`, { method: 'POST' })).json()) as { project: string | null };
+  assert.equal(back.project, 'implicite');
+});
+
 test('suppression définitive : une par une ou toute la corbeille, fichiers compris', async () => {
   const h = await trashSetup();
   const one = await seedArtifact(h, { slug: 'un', visibility: 'private', files: PAGE, kind: 'html' });

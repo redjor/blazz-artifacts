@@ -9,6 +9,9 @@ export interface TrashItemDto {
   purgeAt: string | null;
 }
 
+/** Operations of POST /artifacts/bulk (design 05). */
+export type BulkOp = 'move' | 'addTags' | 'removeTags' | 'visibility' | 'pin' | 'unpin' | 'trash' | 'restore';
+
 export interface ArtifactDto {
   id: string; slug: string; title: string; kind: Kind; visibility: Visibility; hasCode: boolean; memoryStorage: boolean; project: string | null; tags: string[];
   createdAt: string; updatedAt: string; url: string;
