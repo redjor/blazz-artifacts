@@ -1,7 +1,7 @@
 import { closeSync, openSync, readSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Kind, Version } from '../repo.ts';
-import { versionDir } from '../storage.ts';
+import type { Kind, Version } from './repo.ts';
+import { versionDir } from './storage.ts';
 
 // Excerpt shown on dashboard cards: plain text only, never HTML.
 export type Preview = { heading: string | null; text: string | null } | null;

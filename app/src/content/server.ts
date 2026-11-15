@@ -17,10 +17,12 @@ import {
 } from '../repo.ts';
 import { thumbPath, versionDir } from '../storage.ts';
 import { THUMB_MIME } from '../thumbs.ts';
-import { createVisitRecorder, isBot } from '../visits.ts';
+import { createPreviewCache } from '../preview.ts';
+import { createVisitRecorder, isBot, isLinkPreview } from '../visits.ts';
 import { checkFolderPreview, checkFolderThumb, decodeFolderGrant, encodeFolderGrant, effectiveFolderAccess, folderCookieName, signFolderThumb } from './folder-grant.ts';
 import { ancestors, children } from '../folder-tree.ts';
 import { renderFolderPage } from './folder-page.ts';
+import { checkOgImage, renderOgPage, signOgImage } from './og.ts';
 import { decodeGrant, encodeGrant, GRANT_TTL_S, grantCookieName, isGrantValid } from './grant.ts';
 import { PDF_CSP, SANDBOX_SCRIPTS, SANDBOX_STATIC } from './headers.ts';
 import { injectShim } from './shim.ts';
@@ -62,6 +64,38 @@ export function createContentApp(deps: ContentDeps): Hono {
   registerFavicon(app);
 
   const notFound = (c: Context) => c.html(notFoundPage(loc(c)), 404);
+
+  // ——— Link previews (design 06): known preview services get an Open Graph page instead of the usual redirect,
+  // on entry URLs that already granted access; people and scripts never see it.
+  const excerptOf = createPreviewCache(cfg.dataDir);
+  const wantsPreview = (c: Context) => cfg.linkPreviews && c.req.method === 'GET' && isLinkPreview(c.req.header('user-agent'));
+  const pageUrl = (c: Context) => `${cfg.publicContentUrl}${new URL(c.req.url).pathname}`;
+  const ogImageUrl = (a: Artifact, v: Version): string | null =>
+    v.thumb_type
+      ? `${cfg.publicContentUrl}/og/${a.id}/${v.id}?s=${signOgImage(keys.ogImage, { artifactId: a.id, versionId: v.id, epoch: a.access_epoch }, nowS())}`
+      : null;
+  const artifactPreview = (c: Context, art: Artifact, v: Version) => {
+    const kind = v.kind ?? art.kind;
+    const excerpt = excerptOf(art.id, kind, v);
+    const description = excerpt?.text ?? excerpt?.heading ?? tr(loc(c), `kind.${kind}`);
+    return c.html(renderOgPage({ title: art.title, description, url: pageUrl(c), image: ogImageUrl(art, v) }, loc(c)));
+  };
+  const folderPreview = (c: Context, p: Project) => {
+    const arts = listFolderArtifacts(db, p.name);
+    const subs = children(db, p.name).length;
+    const description = p.description?.trim()
+      || (arts.length === 0 && subs > 0 ? tr(loc(c), 'folder.subCount', { n: subs }) : tr(loc(c), 'folder.count', { n: arts.length }));
+    // Image: the first artifact of the page that has a thumbnail.
+    let image: string | null = null;
+    for (const a of arts) {
+      const v = a.current_version_id ? getVersion(db, a.current_version_id) : undefined;
+      if (v?.thumb_type) {
+        image = ogImageUrl(a, v);
+        break;
+      }
+    }
+    return c.html(renderOgPage({ title: p.title?.trim() || p.name, description, url: pageUrl(c), image }, loc(c)));
+  };
 
   function setGrant(c: Context, art: Artifact, linkId: string | null, expS: number) {
     const now = nowS();
@@ -133,8 +167,10 @@ export function createContentApp(deps: ContentDeps): Hono {
     }
     const version = getVersion(db, art.current_version_id);
     if (!version) return notFound(c);
+    const entry = parsed.rest === '' || parsed.rest === version.entry_path;
+    if (entry && art.visibility === 'public' && wantsPreview(c)) return artifactPreview(c, art, version);
     // A view = entry through the unsigned path. Signed paths (admin previews, files, inner pages) never come here.
-    if ((parsed.rest === '' || parsed.rest === version.entry_path) && isHumanNavigation(c)) {
+    if (entry && isHumanNavigation(c)) {
       visits.view(art.id, clientIp(c), c.req.header('user-agent') ?? '', nowMs());
     }
     const sig = signPath(keys.pathSig, { artifactId: art.id, versionId: version.id, epoch: art.access_epoch }, nowS());
@@ -177,6 +213,10 @@ export function createContentApp(deps: ContentDeps): Hono {
     if (link.artifact_id === null) return notFound(c);
     const art = getArtifact(db, link.artifact_id);
     if (!art?.current_version_id || art.visibility !== 'link') return notFound(c);
+    if (wantsPreview(c)) {
+      const v = getVersion(db, art.current_version_id);
+      return v ? artifactPreview(c, art, v) : notFound(c);
+    }
     if (isHumanNavigation(c)) visits.linkOpen(link.id, nowMs());
     const linkExp = link.expires_at ? Math.floor(Date.parse(link.expires_at) / 1000) : Infinity;
     setGrant(c, art, link.id, Math.min(now + GRANT_TTL_S, linkExp));
@@ -210,6 +250,7 @@ export function createContentApp(deps: ContentDeps): Hono {
   function shareFolder(c: Context, link: ShareLink, name: string, now: number) {
     const project = getProject(db, name);
     if (!project || project.visibility !== 'link') return notFound(c);
+    if (wantsPreview(c)) return folderPreview(c, project);
     if (isHumanNavigation(c)) visits.linkOpen(link.id, nowMs());
     const linkExp = link.expires_at ? Math.floor(Date.parse(link.expires_at) / 1000) : Infinity;
     setFolderGrant(c, project, link.id, Math.min(now + GRANT_TTL_S, linkExp));
@@ -228,6 +269,7 @@ export function createContentApp(deps: ContentDeps): Hono {
     const project = folderOf(name);
     const granting = folderAccess(c, project);
     if (!granting) return denyFolder(c, project);
+    if (wantsPreview(c)) return folderPreview(c, project!);
     if (isHumanNavigation(c)) visits.folderView(project!.name, clientIp(c), c.req.header('user-agent') ?? '', nowMs());
     return c.html(renderFolder(project!, null, loc(c), granting));
   };
@@ -277,6 +319,7 @@ export function createContentApp(deps: ContentDeps): Hono {
     if (!art?.current_version_id || art.project !== project!.name) return notFound(c);
     const version = getVersion(db, art.current_version_id);
     if (!version) return notFound(c);
+    if (wantsPreview(c)) return artifactPreview(c, art, version);
     // Counts as a view of the artifact; the signed redirect that follows never counts.
     if (isHumanNavigation(c)) visits.view(art.id, clientIp(c), c.req.header('user-agent') ?? '', nowMs());
     const sig = signPath(keys.pathSig, { artifactId: art.id, versionId: version.id, epoch: art.access_epoch }, nowS());
@@ -308,6 +351,24 @@ export function createContentApp(deps: ContentDeps): Hono {
       return notFound(c);
     }
     return c.body(new Uint8Array(data), 200, { 'Content-Type': THUMB_MIME[v.thumb_type], 'Cache-Control': 'private, max-age=3600' });
+  });
+
+  // Image of a link preview: a short signed URL, no cookie (design 06). Dead once the version, the access epoch or the
+  // trash changes the artifact.
+  app.get('/og/:artifactId/:versionId', async (c) => {
+    if (!cfg.linkPreviews) return notFound(c);
+    const art = getArtifact(db, c.req.param('artifactId'));
+    const versionId = c.req.param('versionId');
+    if (!art || !checkOgImage(keys.ogImage, art, versionId, c.req.query('s'), nowS())) return notFound(c);
+    const v = getVersion(db, versionId);
+    if (!v?.thumb_type || v.artifact_id !== art.id) return notFound(c);
+    let data: Buffer;
+    try {
+      data = await readFile(thumbPath(cfg.dataDir, art.id, v.id, v.thumb_type));
+    } catch {
+      return notFound(c);
+    }
+    return c.body(new Uint8Array(data), 200, { 'Content-Type': THUMB_MIME[v.thumb_type], 'Cache-Control': 'public, max-age=86400' });
   });
 
   app.post('/unlock-folder/:project', bodyLimit({ maxSize: 4096, onError: (c) => c.text(tr(loc(c), 'request.tooLarge'), 413) }), async (c) => {

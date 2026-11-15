@@ -12,6 +12,15 @@ export const BOT_UA = /bot|crawler|spider|slurp|facebookexternalhit|preview|what
 /** A missing or empty User-Agent is a script, not a browser. */
 export const isBot = (ua: string | undefined): boolean => !ua || BOT_UA.test(ua);
 
+/**
+ * Link-preview services of messaging and social apps (design 06), a narrower list than BOT_UA: search engines,
+ * curl and scripts are not in it. iMessage announces itself as facebookexternalhit/Facebot/Twitterbot, Signal as
+ * WhatsApp, Teams as SkypeUriPreview.
+ */
+export const LINK_PREVIEW_UA = /slackbot-linkexpanding|slack-imgproxy|facebookexternalhit|facebot|twitterbot|linkedinbot|discordbot|telegrambot|whatsapp|skypeuripreview|microsoftpreview|mattermost|redditbot|iframely|embedly|pinterestbot|vkshare/i;
+
+export const isLinkPreview = (ua: string | undefined): boolean => !!ua && LINK_PREVIEW_UA.test(ua);
+
 /** A given fingerprint adds at most one view per artifact per 30-minute window. */
 export const VIEW_WINDOW_MS = 30 * 60_000;
 const DAY_MS = 86_400_000;

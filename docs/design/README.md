@@ -9,3 +9,4 @@ the decisions and their reasons.
 - [03 — Sub-folders](03-sub-folders.md): folder trees with inherited access, flat URLs and a filtered breadcrumb.
 - [04 — Trash](04-trash.md): deleted artifacts restorable for 30 days, gone for visitors at once.
 - [05 — Bulk actions](05-bulk-actions.md): select artifacts and move, tag, change visibility, pin or trash them at once.
+- [06 — Link previews](06-link-previews.md): Open Graph cards for link-preview services, never for people or scripts.

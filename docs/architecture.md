@@ -46,6 +46,10 @@ Share links: `GET /share/<token>` exchanges the token for a grant cookie and red
 address bar. Folder pages: `/d/<folder>`, cards enter through `/d/<folder>/a/<slug>`, which re-checks folder
 access and current membership before issuing the usual signed path.
 
+Link previews (design 06): on those entry URLs, a known link-preview service (Slack, Teams, iMessage…) gets an Open
+Graph page (title, excerpt, signed thumbnail URL `/og/<artifact>/<version>?s=…`, 24 h) instead of the redirect; people,
+scripts and search engines never do.
+
 ## Data
 
 ```

@@ -21,6 +21,7 @@ _To be added before the first public release:_
 - **Four visibility modes** per artifact: private, secret code, share link, public. Share links are revocable, can expire, and are counted.
 - **Stable URLs with versions**: re-publishing keeps `/a/<slug>`, adds a version; preview and restore any kept version.
 - **Folders**: group artifacts, share a folder as a script-free page (`/d/<folder>`) with its own access mode, ordering, description and links.
+- **Link previews**: public artifacts, share links and shared folders unfurl in Slack, Teams, iMessage or WhatsApp with their title, excerpt and thumbnail; people and scripts are unaffected (`LINK_PREVIEWS`).
 - **Trash**: a deleted artifact is gone for visitors at once but can be restored for 30 days (`TRASH_DAYS`), undo included.
 - **Gallery**: real thumbnails captured by the CLI at publish time, kind filters, tags, search, pinning, list or grid, keyboard navigation and shortcuts.
 - **Bulk actions**: select artifacts to move, tag, change visibility, pin or trash them at once, with the same safeguards and an undo.
@@ -61,6 +62,7 @@ Both ports are bound to `127.0.0.1`: put a reverse proxy in front with two hostn
 | `PUBLIC_CONTENT_URL` | required | Public origin of the content server, used to build artifact, folder and share URLs. |
 | `ADMIN_PASSWORD_HASH` | empty | `scrypt:…` from `src/scripts/hash-password.ts`. Empty: admin sign-in impossible. |
 | `API_TOKEN_HASH` | empty | SHA-256 hex from `src/scripts/new-api-token.ts`. Empty: API token disabled. |
+| `LINK_PREVIEWS` | `1` | Open Graph cards for link-preview services (Slack, Teams, iMessage…); `0` turns them off. |
 | `HUB_LOCALE` | `en` | Language of visitor pages: `en`, `fr`, or `auto` (Accept-Language). |
 | `MAX_UPLOAD_MB` | `100` | Upload size limit. |
 | `ZIP_MAX_FILES` / `ZIP_MAX_BYTES` | `2000` / `209715200` | ZIP extraction limits. |

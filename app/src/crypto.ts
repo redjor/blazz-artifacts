@@ -7,7 +7,7 @@ import {
  * folderGrant signs folder access cookies, folderThumb the folder page's thumbnail URLs,
  * folderPreview the admin-issued folder page previews.
  */
-export interface Keys { grant: Buffer; pathSig: Buffer; linkEnc: Buffer; folderGrant: Buffer; folderThumb: Buffer; folderPreview: Buffer }
+export interface Keys { grant: Buffer; pathSig: Buffer; linkEnc: Buffer; folderGrant: Buffer; folderThumb: Buffer; folderPreview: Buffer; ogImage: Buffer }
 
 export function deriveKeys(secret: Buffer): Keys {
   const key = (info: string) => Buffer.from(hkdfSync('sha256', secret, Buffer.alloc(0), info, 32));
@@ -18,6 +18,7 @@ export function deriveKeys(secret: Buffer): Keys {
     folderGrant: key('artifact-hub/folder-grant'),
     folderThumb: key('artifact-hub/folder-thumb'),
     folderPreview: key('artifact-hub/folder-preview'),
+    ogImage: key('artifact-hub/og-image'),
   };
 }
 

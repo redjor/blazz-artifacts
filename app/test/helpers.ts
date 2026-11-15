@@ -26,6 +26,8 @@ export function testConfig(dataDir: string, over: Partial<Config> = {}): Config 
     locale: 'en',
     // Existing tests expect DELETE to remove for good; the trash tests set it.
     trashDays: 0,
+    // Existing tests expect the usual redirect for every bot; the link preview tests set it.
+    linkPreviews: false,
     ...over,
   };
 }

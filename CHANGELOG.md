@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Link previews: public artifacts, active share links and publicly reachable folders show a card (title, excerpt,
+  thumbnail) when pasted into Slack, Teams, iMessage, WhatsApp, Discord or LinkedIn. People, scripts and search
+  engines get the usual responses; `LINK_PREVIEWS=0` turns it off.
 - Development: `npm run dev` restarts the API and content servers when the server code changes (Vite stays up), so
   the hot-reloaded admin UI never calls an older API. The gallery also loads when only the trash fails to load.
 - Bulk actions: select artifacts (check on hover, “Select” in the card menu, `X`, `Ctrl/Cmd+A`) and move, tag,

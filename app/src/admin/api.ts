@@ -27,7 +27,7 @@ import { deleteForGood } from '../trash.ts';
 import { receiveUpload } from '../upload.ts';
 import { folderVisitStats, viewTotals, visitStats } from '../visits.ts';
 import type { AdminEnv } from './auth.ts';
-import { createPreviewCache } from './preview.ts';
+import { createPreviewCache } from '../preview.ts';
 
 export interface ApiDeps { db: Db; cfg: Config; keys: Keys; now?: () => number }
 

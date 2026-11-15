@@ -17,6 +17,8 @@ export interface Config {
   locale: LocaleSetting;
   /** Days a deleted artifact stays in the trash before it is purged (TRASH_DAYS, 30); 0: deleted at once, no trash. */
   trashDays: number;
+  /** Open Graph page for link-preview services (LINK_PREVIEWS, on by default; 0 turns it off). Design 06. */
+  linkPreviews: boolean;
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -39,6 +41,14 @@ function boundedInt(env: NodeJS.ProcessEnv, name: string, fallback: number, max:
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 0 || n > max) throw new Error(`${name} must be an integer between 0 and ${max}`);
   return n;
+}
+
+function flag(env: NodeJS.ProcessEnv, name: string, fallback: boolean): boolean {
+  const raw = env[name];
+  if (raw === undefined || raw === '') return fallback;
+  if (raw === '1' || raw === 'true') return true;
+  if (raw === '0' || raw === 'false') return false;
+  throw new Error(`${name} must be 0 or 1`);
 }
 
 function publicOrigin(env: NodeJS.ProcessEnv, name: string): string {
@@ -77,5 +87,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     contentBind: env.CONTENT_BIND || '127.0.0.1',
     locale: parseLocaleSetting(env.HUB_LOCALE),
     trashDays: boundedInt(env, 'TRASH_DAYS', 30, 3650),
+    linkPreviews: flag(env, 'LINK_PREVIEWS', true),
   };
 }

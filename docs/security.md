@@ -72,6 +72,18 @@ a dedicated cookie (`__Host-fgrant_<name>`) and key. Folder thumbnails are serve
 and current membership. The admin UI asks for confirmation (with the count) before sharing a folder that contains private
 artifacts or moving a non-public artifact into a shared folder.
 
+### Link previews
+
+Known link-preview services (Slack, Teams, iMessage, WhatsApp/Signal, Discord, LinkedIn, Telegram…, a list distinct
+from the bot list and without search engines or command-line tools) get a script-free Open Graph page instead of the
+redirect, only on entry URLs that already granted access to a cookie-less request: a public `/a/<slug>`, an active
+`/share/<token>`, a folder reachable without a cookie and its `/d/<name>/a/<slug>`. Private, code-protected, revoked,
+expired and trashed items answer as before. The card holds the title, the plain-text excerpt (or folder description)
+and the thumbnail through `/og/<artifact>/<version>?s=…`: an HMAC (dedicated key) over the artifact, its version, its
+access epoch and an expiry of 24 hours; a new version, a cut access or the trash refuses it at once, while revoking a
+single link leaves an image URL already handed to a service valid until it expires. Previews never count as views or
+link opens and set no cookie. `LINK_PREVIEWS=0` turns the feature off.
+
 ### Sub-folders
 
 Folders nest up to 4 levels, and access is always inherited: a visitor reaches folder F if F or any ancestor grants access, each checked with its own cookie and epoch; the highest granting folder wins. A private child is reachable through its parent. `/d/<F>/a/<slug>` serves direct members of F only. The breadcrumb starts at the highest ancestor the visitor can access, and the unlock page only names the requested folder, never its parent. Thumbnail signatures are bound to the granting folder and the displayed folder (the granting folder is re-checked as a current ancestor). Moving a folder out of a parent, or deleting the parent, cuts inherited access immediately for new openings (thumbnails are refused at once); an already-issued signed artifact path stays valid for up to 1 hour.
