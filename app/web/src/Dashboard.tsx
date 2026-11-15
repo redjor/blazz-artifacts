@@ -8,7 +8,7 @@ import { FolderCard, FolderMenu, FolderRow, folderKey, folderOfKey, type FolderA
 import { copyFolderLink as copyFolderLinkOf, shareFolderFor7Days } from './folderLinks.ts';
 import { deleteChildrenNote, FolderDrawer, type TabId } from './FolderPanel.tsx';
 import { ACCEPT_ALL, artifactOpenLabel, compareText, KIND_FILTERS, kindLabel, kindTileLabel, VISIBILITY_ORDER, visibilityLabel, visibilityShort } from './format.ts';
-import { t, tn, type Locale, type MessageKey } from './i18n/index.ts';
+import { getLocale, setLocale, t, tn, type Locale, type MessageKey } from './i18n/index.ts';
 import { LanguageSwitch } from './LanguageSwitch.tsx';
 import { CheckIcon, ChevronDownIcon, CloseIcon, FilterIcon, FolderPlusIcon, GridIcon, KIND_ICON, KeyboardIcon, ListIcon, LogoutIcon, PinIcon, PlusIcon, SearchIcon, TrashIcon, UploadIcon, VISIBILITY_ICON } from './icons.tsx';
 import { hasOpenLayer, isEditable } from './layers.ts';
@@ -19,6 +19,7 @@ import { NewFolderDialog } from './NewFolderDialog.tsx';
 import { PublishDialog } from './PublishDialog.tsx';
 import { SelectionBar, type BulkVisibility, type TagsOp } from './SelectionBar.tsx';
 import { TrashView } from './TrashView.tsx';
+import { CommandPalette, type PaletteAction } from './CommandPalette.tsx';
 import type { ArtifactDto, BulkOp, FolderSummary, Kind, LabelCount, SnippetPart, TrashItemDto, Visibility } from './types.ts';
 import { menuItem, TOOL_PANEL, TOOL_WRAP, toolButton } from './ui.ts';
 
@@ -75,6 +76,7 @@ const chip = (on: boolean) =>
   `inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] ${on ? 'bg-ink text-canvas' : 'bg-surface-2 text-ink hover:bg-surface-3'}`;
 
 const SHORTCUTS: { keys: (string | MessageKey)[]; label: MessageKey }[] = [
+  { keys: ['Ctrl/⌘', 'K'], label: 'shortcut.palette' },
   { keys: ['/'], label: 'shortcut.search' },
   { keys: ['N'], label: 'shortcut.publish' },
   { keys: ['←', '↑', '→', '↓'], label: 'shortcut.move' },
@@ -129,6 +131,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const [trashPending, setTrashPending] = useState<string | null>(null);
   // Bulk selection (design 05): selected artifact ids. Selecting mode lasts while one of them is shown.
   const [selection, setSelection] = useState<string[]>([]);
+  // Command palette (design 08), Ctrl/Cmd+K.
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const bulkBusy = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
@@ -379,6 +383,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
   useEffect(() => {
     keys.current = (e: KeyboardEvent) => {
+      // Ctrl/Cmd+K: the command palette, from anywhere (a text field included) unless a dialog or menu is open.
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k' && !hasOpenLayer()) {
+        e.preventDefault();
+        setPaletteOpen(true);
+        return;
+      }
       // Ctrl/Cmd+Z right after a deletion: the same as the toast's Undo (never inside a text field, which has its own).
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z' && toast?.undo && !isEditable(e.target) && !hasOpenLayer()) {
         e.preventDefault();
@@ -775,6 +785,18 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
     onToggleSelect: () => toggleSelect(a.id),
   });
 
+  const paletteActions: PaletteAction[] = [
+    { id: 'publish', label: t('shortcut.publish'), icon: <UploadIcon className="size-4" />, keys: ['N'], run: () => pick(ACCEPT_ALL) },
+    { id: 'folder', label: currentFolder ? t('gallery.newSubfolder') : t('common.newFolder'), icon: <FolderPlusIcon className="size-4" />, run: () => setNewFolder({ moveIds: [] }) },
+    { id: 'trash', label: t('palette.trash'), icon: <TrashIcon className="size-4" />, run: () => void router.navigate({ to: '/trash' }) },
+    view === 'grid'
+      ? { id: 'view', label: t('palette.viewList'), icon: <ListIcon className="size-4" />, run: () => setView('list') }
+      : { id: 'view', label: t('palette.viewGrid'), icon: <GridIcon className="size-4" />, run: () => setView('grid') },
+    { id: 'language', label: t('palette.language', { name: t('lang.targetName') }), icon: <span lang={t('lang.targetCode')} className="text-[11px] font-medium">{t('lang.targetShort')}</span>, run: () => setLocale(getLocale() === 'fr' ? 'en' : 'fr') },
+    { id: 'shortcuts', label: t('gallery.shortcuts'), icon: <KeyboardIcon className="size-4" />, keys: ['?'], run: () => shortcuts.current?.open() },
+    { id: 'logout', label: t('gallery.logout'), icon: <LogoutIcon className="size-4" />, run: onLogout },
+  ];
+
   const selectedSummary = selected ? items.find((a) => a.id === selected) : undefined;
   // Position of the open artifact: if its card disappears (deletion), focus goes to its neighbour.
   const lastIndex = useRef(0);
@@ -1114,6 +1136,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
           )}
         </div>,
         document.body,
+      )}
+      {paletteOpen && (
+        <CommandPalette items={items} folders={namedFolders.map((f) => ({ name: f.name, title: f.title, count: f.count }))} paths={folderPaths} actions={paletteActions}
+          onClose={() => setPaletteOpen(false)}
+          onOpenArtifact={(a) => { pushedPanel.current = true; go(a.project, a.id); setFocusId(a.id); }}
+          onOpenArtifactTab={(a) => void run(() => openPreview(a.id))}
+          onOpenFolder={enterFolder} />
       )}
       {newFolder && <NewFolderDialog existing={namedFolders.map((f) => f.name)} parent={inFolder} parentTitle={currentFolder?.title ?? undefined} onClose={() => setNewFolder(null)} onCreated={onFolderCreated} />}
       {pending && <PublishDialog key={`${pending.name}-${pending.lastModified}-${pending.size}`} file={pending} defaultProject={project && project !== NONE ? project : ''} projects={projectNames} paths={folderPaths} tags={tagCounts.map((t) => t.name)} onClose={() => setPending(null)} onPublished={reload} />}

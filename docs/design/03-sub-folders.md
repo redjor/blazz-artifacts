@@ -95,8 +95,8 @@ parent's code, which would reveal the parent.
 - "Move to…" in the folder panel opens a tree picker that excludes the folder itself and its descendants. No drag and drop
   in v1.
 - The artifact folder picker shows the tree, indented.
-- An admin UI to order sub-folders is deferred: the API route `PUT /projects/:name/children-order` exists, but without
-  a UI sub-folders show in title order.
+- Ordering sub-folders in the admin UI came later ([09](09-sub-folder-order.md)): the folder panel's "Order" tab, through
+  `PUT /projects/:name/children-order`.
 
 ### Safeguards
 
@@ -157,4 +157,5 @@ row first.
 ## Out of scope
 
 Drag and drop of folders, recursive statistics and counts, downloading a sub-tree as a ZIP, sub-folders that opt out of
-inheritance, a `--parent` CLI option, nested URLs, ordering sub-folders in the admin UI.
+inheritance, a `--parent` CLI option, nested URLs. Ordering sub-folders in the admin UI, first listed here, came with
+[09](09-sub-folder-order.md).

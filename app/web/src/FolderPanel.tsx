@@ -33,6 +33,23 @@ export function deleteChildrenNote(tree: TreeFolder[], name: string, parent: str
   return tn('confirm.deleteChildren', kids, { target: p ? `“${p.title ?? p.name}”` : t('move.root') });
 }
 
+function VisibilityMeta({ v }: { v: Visibility }) {
+  const VisIcon = VISIBILITY_ICON[v];
+  return <span className={`inline-flex items-center gap-1 ${v === 'private' ? 'text-warn' : ''}`}><VisIcon className="size-3" />{visibilityLabel(v)}</span>;
+}
+
+const artifactItems = (f: FolderDetail): OrderItem[] => f.artifacts.map((a) => ({
+  id: a.id, title: a.title, leading: <RowThumb a={a} />,
+  meta: <><span>{kindLabel(a.kind)}{a.versionNumber ? ` · v${a.versionNumber}` : ''}</span><span aria-hidden="true">·</span><VisibilityMeta v={a.visibility} /></>,
+}));
+
+// Sub-folders (design 09): ids are folder names, saved through PUT /projects/:name/children-order.
+const childItems = (f: FolderDetail): OrderItem[] => f.children.map((ch) => ({
+  id: ch.name, title: ch.title ?? ch.name,
+  leading: <span aria-hidden="true" className="grid aspect-[8/5] w-16 shrink-0 place-items-center rounded-md bg-surface-2"><FolderIcon className="size-4 text-muted" /></span>,
+  meta: <><span>{tn('folder.count', ch.count)}</span><span aria-hidden="true">·</span><VisibilityMeta v={ch.visibility} /></>,
+}));
+
 function RowThumb({ a }: { a: FolderArtifact }) {
   const [thumb, onError] = useThumbnail(a.thumbnailUrl);
   if (thumb) return <ThumbImage src={thumb} onError={onError} className="aspect-[8/5] w-16 shrink-0 rounded-md" />;
@@ -40,22 +57,25 @@ function RowThumb({ a }: { a: FolderArtifact }) {
   return <span aria-hidden="true" className={`tile kind-${a.kind} grid aspect-[8/5] w-16 shrink-0 place-items-center rounded-md`}><Icon className="size-4" /></span>;
 }
 
+/** A row of an order list: its id, its title (announcements, labels), and what the row shows after the handle. */
+interface OrderItem { id: string; title: string; leading: ReactNode; meta: ReactNode }
+
 /**
- * Order of the visitor page: drag a row, or “Move” then ↑/↓ (Enter or Escape to finish or cancel).
- * Each confirmed change is saved right away.
+ * An ordered list of the visitor page (artifact cards, sub-folders): drag a row, or “Move” then ↑/↓ (Enter or Escape
+ * to finish or cancel). Each confirmed change is saved right away. `items` come in the saved order.
  */
-function OrderList({ folder, onSave }: { folder: FolderDetail; onSave: (ids: string[]) => Promise<boolean> }) {
+function OrderList({ items, hint, empty, onSave }: { items: OrderItem[]; hint: string; empty: string; onSave: (ids: string[]) => Promise<boolean> }) {
   const [draft, setDraft] = useState<string[] | null>(null);
   const [moving, setMoving] = useState<{ id: string; from: string[] } | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [announce, setAnnounce] = useState('');
   const handles = useRef<Record<string, HTMLButtonElement | null>>({});
-  const byId = new Map(folder.artifacts.map((a) => [a.id, a]));
-  const ids = (draft ?? folder.artifacts.map((a) => a.id)).filter((id) => byId.has(id));
+  const byId = new Map(items.map((a) => [a.id, a]));
+  const ids = (draft ?? items.map((a) => a.id)).filter((id) => byId.has(id));
   const hintId = useId();
 
-  // The folder changed (reload): the draft restarts from the saved order.
-  const key = folder.artifacts.map((a) => a.id).join();
+  // The list changed (reload): the draft restarts from the saved order.
+  const key = items.map((a) => a.id).join();
   const [seenKey, setSeenKey] = useState(key);
   if (seenKey !== key) {
     setSeenKey(key);
@@ -70,7 +90,7 @@ function OrderList({ folder, onSave }: { folder: FolderDetail; onSave: (ids: str
     return { list, position: clamped + 1 };
   };
   const commit = async (list: string[]) => {
-    const same = list.join() === folder.artifacts.map((a) => a.id).join();
+    const same = list.join() === key;
     if (same || (await onSave(list))) setDraft(same ? null : list);
     else setDraft(null);
   };
@@ -136,18 +156,17 @@ function OrderList({ folder, onSave }: { folder: FolderDetail; onSave: (ids: str
     void commit(ids);
   };
 
-  if (ids.length === 0) return <p className="text-sm text-muted">{t('order.empty')}</p>;
+  if (ids.length === 0) return <p className="text-sm text-muted">{empty}</p>;
 
   return (
     <div className="space-y-3">
       <p id={hintId} className="text-sm text-muted">
-        {t('order.hint')}
+        {hint}
       </p>
       <p className="sr-only" aria-live="assertive">{announce}</p>
       <ol className="space-y-2" onDragOver={(e) => { if (dragId) { e.preventDefault(); e.stopPropagation(); } }} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); }}>
         {ids.map((id, i) => {
           const a = byId.get(id)!;
-          const VisIcon = VISIBILITY_ICON[a.visibility];
           const isMoving = moving?.id === id;
           return (
             <li key={id} draggable={!moving} onDragStart={(e) => onDragStart(e, id)} onDragOver={(e) => onDragOver(e, id)} onDragEnd={onDragEnd}
@@ -160,14 +179,10 @@ function OrderList({ folder, onSave }: { folder: FolderDetail; onSave: (ids: str
                 {isMoving ? <CheckIcon className="size-4" /> : <GripIcon className="size-4" />}
               </button>
               <span className="w-5 shrink-0 text-right text-[13px] text-muted tabular-nums" aria-hidden="true">{i + 1}</span>
-              <RowThumb a={a} />
+              {a.leading}
               <span className="min-w-0 flex-1">
                 <span className="block truncate">{a.title}</span>
-                <span className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
-                  <span>{kindLabel(a.kind)}{a.versionNumber ? ` · v${a.versionNumber}` : ''}</span>
-                  <span aria-hidden="true">·</span>
-                  <span className={`inline-flex items-center gap-1 ${a.visibility === 'private' ? 'text-warn' : ''}`}><VisIcon className="size-3" />{visibilityLabel(a.visibility)}</span>
-                </span>
+                <span className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted">{a.meta}</span>
               </span>
               {isMoving && (
                 <span className="flex shrink-0 gap-0.5">
@@ -451,7 +466,7 @@ export function FolderDrawer({ name, summary, folders, initialTab = 'info', onCl
               tabIndex={on ? 0 : -1} data-autofocus={on || undefined} onClick={() => setTab(tb.id)}
               className={`relative -mb-px inline-flex h-11 shrink-0 focus-visible:-outline-offset-2 items-center gap-2 rounded-t-lg px-2.5 text-sm whitespace-nowrap after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full ${on ? 'text-ink after:bg-ink' : 'text-muted hover:text-ink'}`}>
               {t(tb.label)}
-              {tb.id === 'order' && <span className="text-[13px] text-muted tabular-nums">{f.count}</span>}
+              {tb.id === 'order' && <span className="text-[13px] text-muted tabular-nums">{f.count + f.children.length}</span>}
               {dirty[tb.id] && <span className="size-1.5 rounded-full bg-ring"><span className="sr-only">{t('common.unsaved')}</span></span>}
             </button>
           );
@@ -567,7 +582,23 @@ export function FolderDrawer({ name, summary, folders, initialTab = 'info', onCl
         </div>
 
         <div role="tabpanel" id={`${baseId}-panel-order`} aria-labelledby={`${baseId}-tab-order`} hidden={tab !== 'order'} className="px-5 py-6 sm:px-7">
-          <OrderList folder={f} onSave={(ids) => act('order', () => api.orderFolder(f.name, ids), t('notice.orderSaved'))} />
+          {f.children.length > 0 ? (
+            <div className="space-y-8">
+              <section aria-labelledby={`${baseId}-order-children`} className="space-y-3">
+                <h3 id={`${baseId}-order-children`} className="text-sm font-medium">{t('order.subfolders')}</h3>
+                <OrderList items={childItems(f)} hint={t('order.childrenHint')} empty=""
+                  onSave={(names) => act('order-children', () => api.orderFolderChildren(f.name, names), t('notice.orderSaved'))} />
+              </section>
+              <section aria-labelledby={`${baseId}-order-artifacts`} className="space-y-3">
+                <h3 id={`${baseId}-order-artifacts`} className="text-sm font-medium">{t('order.artifacts')}</h3>
+                <OrderList items={artifactItems(f)} hint={t('order.hint')} empty={t('order.empty')}
+                  onSave={(ids) => act('order', () => api.orderFolder(f.name, ids), t('notice.orderSaved'))} />
+              </section>
+            </div>
+          ) : (
+            <OrderList items={artifactItems(f)} hint={t('order.hint')} empty={t('order.empty')}
+              onSave={(ids) => act('order', () => api.orderFolder(f.name, ids), t('notice.orderSaved'))} />
+          )}
         </div>
       </div>
     </>,

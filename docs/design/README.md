@@ -11,3 +11,5 @@ the decisions and their reasons.
 - [05 — Bulk actions](05-bulk-actions.md): select artifacts and move, tag, change visibility, pin or trash them at once.
 - [06 — Link previews](06-link-previews.md): Open Graph cards for link-preview services, never for people or scripts.
 - [07 — Full-text search](07-full-text-search.md): search artifacts by their content with SQLite FTS5, snippets in the gallery.
+- [08 — Command palette](08-command-palette.md): `Ctrl/Cmd+K` to reach an artifact, a folder or an action.
+- [09 — Sub-folder order](09-sub-folder-order.md): order sub-folders in the folder panel, like its artifacts.

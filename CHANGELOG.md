@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Command palette: `Ctrl/Cmd+K` finds an artifact (title, tags, folder or content), a folder or an action
+  (publish, new folder, trash, view, language, shortcuts, sign out) and opens it with Enter.
+- Sub-folders can be ordered in the folder panel's "Order" tab (drag, or Move then arrows), like its artifacts; the
+  order applies in the gallery and on the visitor page.
 - Full-text search: the gallery search also finds artifacts by their content (Markdown, JSON, HTML pages, every page
   of a ZIP site), ignoring accents and case, and shows where the words matched. SQLite FTS5, no new dependency;
   existing artifacts are indexed at startup.
