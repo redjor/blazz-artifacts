@@ -17,7 +17,7 @@ _To be added before the first public release:_
 
 ## Features
 
-- **Publish** HTML, Markdown (GFM, syntax highlighting, sanitised), PDF, JSON (formatted) and ZIP sites (Vite builds work, `<script type="module">` included) by drag and drop or from the CLI.
+- **Publish** HTML, Markdown (GFM, syntax highlighting, Mermaid diagrams, sanitised), PDF, JSON (formatted) and ZIP sites (Vite builds work, `<script type="module">` included) by drag and drop or from the CLI.
 - **Four visibility modes** per artifact: private, secret code, share link, public. Share links are revocable, can expire, and are counted.
 - **Stable URLs with versions**: re-publishing keeps `/a/<slug>`, adds a version; preview and restore any kept version.
 - **Folders**: group artifacts, share a folder as a script-free page (`/d/<folder>`) with its own access mode, ordering, description and links.

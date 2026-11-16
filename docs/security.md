@@ -116,7 +116,10 @@ extraction rejects the whole archive on absolute paths or drive letters, `..`, N
 more than `ZIP_MAX_FILES` entries, more than `ZIP_MAX_BYTES` extracted (measured while extracting), a compression ratio
 above 100:1 on entries over 1 MB, or a first segment starting with `~` (reserved for signatures); final paths are
 resolved and checked against the version directory. Markdown is rendered by markdown-it then sanitised (no scripts,
-event handlers or `javascript:` URLs). Thumbnails: WebP, PNG or JPEG only, magic bytes must match the declared type (SVG
+event handlers or `javascript:` URLs). Mermaid blocks are drawn as SVG by `beautiful-mermaid` (labels and style values
+escaped) and inserted after sanitising, in place of a random per-render marker; its Google Fonts import is removed, and
+an SVG that still holds a script, event handler, link, animation or remote `url()` stays a code block. The reader page
+runs no script either way. Thumbnails: WebP, PNG or JPEG only, magic bytes must match the declared type (SVG
 always refused), 2 MiB max, never decoded by the server, stored outside `files/`.
 
 ## Visit statistics and privacy

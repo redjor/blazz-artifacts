@@ -39,6 +39,29 @@ test('renderMarkdown retire le contenu actif', () => {
   assert.doesNotMatch(html, /<script|onerror|href="javascript:|<iframe/i);
 });
 
+test('renderMarkdown : diagramme Mermaid en SVG, sans appel tiers', () => {
+  const html = renderMarkdown('Avant\n\n```mermaid\nsequenceDiagram\n  participant V as Visiteur <b>\n  V->>V: Afficher\n```\n\nAprès');
+  assert.match(html, /<figure class="diagram"><svg [^>]*viewBox="/);
+  assert.match(html, /Visiteur &lt;b&gt;/);
+  assert.match(html, /--bg:var\(--diagram-bg\)/);
+  assert.doesNotMatch(html, /<pre|diagram-[0-9a-f]{24}|@import|googleapis/);
+  assert.match(html, /<p>Avant<\/p>[\s\S]*<p>Après<\/p>/);
+});
+
+test('renderMarkdown : Mermaid non pris en charge ou distant reste un bloc de code', () => {
+  const pie = renderMarkdown('```mermaid\npie title X\n  "a": 1\n```');
+  assert.match(pie, /<pre><code class="language-mermaid">pie title X/);
+  const remote = renderMarkdown('```mermaid\ngraph TD\n  A --> B\n  style A fill:url(https://e.com/x)\n```');
+  assert.doesNotMatch(remote, /<svg/);
+  assert.match(remote, /<pre><code class="language-mermaid">/);
+});
+
+test('renderMarkdown : un marqueur dans la source ne devient pas un diagramme', () => {
+  const html = renderMarkdown('diagram-000000000000000000000000-0\n\n```mermaid\ngraph LR\n  A --> B\n```');
+  assert.equal(html.match(/<svg /g)?.length, 1);
+  assert.match(html, /<p>diagram-000000000000000000000000-0<\/p>/);
+});
+
 test('ingestFile HTML', async () => {
   const { file, dest } = await upload('page.html', '<p>hi</p>');
   const r = await ingestFile(file, dest, limits);

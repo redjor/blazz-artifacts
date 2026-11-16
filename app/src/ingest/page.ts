@@ -106,6 +106,8 @@ html:has(#theme-toggle:checked) .theme-btn .to-dark{display:inline}
 .prose thead th{background:var(--band);color:var(--fg);font-weight:700;border-bottom:2px solid var(--rule)}
 .prose th,.prose td{padding:16px 20px;text-align:left;vertical-align:top;border-bottom:1px solid var(--rule)}
 .prose td{color:var(--soft)}
+.prose .diagram{width:min(1100px,calc(100vw - 48px));margin:2em 0 2em 50%;translate:-50% 0;--diagram-bg:var(--bg);--diagram-fg:var(--fg);--diagram-muted:var(--muted)}
+.prose .diagram svg{display:block;max-width:100%;height:auto;margin:0 auto}
 .prose details{padding:.8em 1em;border:1px solid var(--rule);border-radius:8px}
 .prose summary{cursor:pointer;color:var(--fg);font-weight:600}
 .hljs-keyword,.hljs-selector-tag,.hljs-literal{color:var(--kw)}
@@ -142,6 +144,7 @@ background:var(--bg);color:var(--fg);box-shadow:0 0 0 1px var(--rule),0 18px 48p
 @media (max-width:640px){
 body{font-size:17px}.page{padding:12px 18px 80px}.doc-head{margin:24px 0 32px}
 .prose table{display:block;overflow-x:auto}.prose th,.prose td{padding:12px 14px}
+.prose .diagram{width:calc(100vw - 36px);overflow-x:auto}.prose .diagram svg{max-width:none}
 }
 @media print{.toolbar,.theme-toggle{display:none}.page{max-width:none;padding:0}body{background:#fff;color:#000}}
 `;
@@ -159,8 +162,8 @@ export function frenchSpacing(html: string): string {
     .split(/(<[^>]+>)/)
     .map((part) => {
       if (part.startsWith('<')) {
-        if (/^<(code|pre)\b/i.test(part)) raw++;
-        else if (/^<\/(code|pre)>/i.test(part)) raw = Math.max(0, raw - 1);
+        if (/^<(code|pre|svg)\b/i.test(part)) raw++;
+        else if (/^<\/(code|pre|svg)>/i.test(part)) raw = Math.max(0, raw - 1);
         return part;
       }
       if (raw) return part;

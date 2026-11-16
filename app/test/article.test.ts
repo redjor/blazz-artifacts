@@ -70,6 +70,7 @@ test('frenchSpacing : insécables avant la ponctuation haute, jamais dans le cod
   const { frenchSpacing } = await import('../src/ingest/page.ts');
   const out = frenchSpacing('<p>Durée : 32 min ! « Oui » ?</p><p><code>a : b</code></p><pre><code>x ; y</code></pre>');
   assert.equal(out, '<p>Durée : 32 min ! « Oui » ?</p><p><code>a : b</code></p><pre><code>x ; y</code></pre>');
+  assert.equal(frenchSpacing('<svg><style>a { b: c }</style><text>c : d</text></svg>'), '<svg><style>a { b: c }</style><text>c : d</text></svg>');
 });
 
 test('sommaire : ancres sur les h2 et popover sans JavaScript', () => {

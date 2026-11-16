@@ -32,7 +32,8 @@ to its parent.
 
 Server stack: TypeScript executed directly by Node (type stripping, no server build step), `node:sqlite`
 (no native dependency; still marked experimental, hence the pinned Node version in the image), `node:crypto`
-(scrypt, HKDF, HMAC, AES-GCM), `busboy`, `yauzl`, `markdown-it`, `highlight.js`, `sanitize-html`.
+(scrypt, HKDF, HMAC, AES-GCM), `busboy`, `yauzl`, `markdown-it`, `highlight.js`, `sanitize-html`,
+`beautiful-mermaid` (Mermaid to SVG, no DOM).
 Admin UI: React 19, Vite, Tailwind 4, no runtime UI library, hand-drawn SVG icons, a tiny typed i18n layer.
 
 ## Request flow for a visitor
@@ -83,7 +84,8 @@ PDFs and JSON keep the 10 most recent; the current and the highest-numbered vers
 
 Markdown and JSON reader pages are rendered once at upload time into `index.html` next to the stored source, in the
 `HUB_LOCALE` language (`auto` renders English). `src/scripts/rerender-documents.ts` re-renders them after a template
-or locale change.
+or locale change. ` ```mermaid ` blocks become inline SVG at the same time (flowchart, state, sequence, class, ER and
+XY charts); other diagram types and syntax errors stay code blocks.
 
 ## Admin API
 

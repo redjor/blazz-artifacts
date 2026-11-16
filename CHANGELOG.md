@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Markdown: ` ```mermaid ` blocks show as diagrams (flowchart, state, sequence, class, ER, XY charts), drawn as SVG at
+  upload time with `beautiful-mermaid`, in the page's typeface and colours, light and dark; still no script on the page.
+  Other diagram types stay code blocks. Already published documents get them after
+  `node src/scripts/rerender-documents.ts`.
 - One typeface everywhere: Figtree (SIL OFL 1.1), self-hosted, in the admin UI and on every visitor page (bar,
   folder pages, Markdown and JSON reader, unlock and 404 pages); served by the content server at `/_fonts/`, never
   from a third party. Already published Markdown and JSON documents get it after
