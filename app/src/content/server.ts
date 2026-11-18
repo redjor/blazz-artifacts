@@ -26,7 +26,7 @@ import { renderFolderPage } from './folder-page.ts';
 import { checkOgImage, renderOgPage, signOgImage } from './og.ts';
 import { decodeGrant, encodeGrant, GRANT_TTL_S, grantCookieName, isGrantValid } from './grant.ts';
 import { FRAME_PAGE_CSP, framedBySelf, PDF_CSP, SANDBOX_SCRIPTS, SANDBOX_STATIC } from './headers.ts';
-import { renderFramePage } from './frame-page.ts';
+import { parseScreen, renderFramePage, type Screen } from './frame-page.ts';
 import { injectShim } from './shim.ts';
 import { contentTypeFor } from './mime.ts';
 import { folderUnlockPage, notFoundPage, unlockPage } from './pages.ts';
@@ -145,13 +145,26 @@ export function createContentApp(deps: ContentDeps): Hono {
     const top = Math.max(0, chain.findIndex((x) => x.name === granting.name));
     return chain.slice(0, top + 1).reverse().map((x) => ({ href: `/d/${x.name}`, title: x.title?.trim() || x.name }));
   };
-  function framePage(c: Context, art: Artifact, v: Version, sig: string, path: { href: string; title: string }[]) {
+  /** Previous / next artifact of the folder (design 11), in visitor page order, keeping the simulated screen. */
+  const folderSteps = (p: Project, art: Artifact, screen: Screen | null) => {
+    const list = listFolderArtifacts(db, p.name).filter((a) => a.current_version_id);
+    const i = list.findIndex((a) => a.id === art.id);
+    if (i < 0) return null;
+    const step = (a: Artifact | undefined) => (a ? { href: `/d/${p.name}/a/${encodePath(a.slug)}${screen ? `?w=${screen}` : ''}`, title: a.title } : null);
+    return { prev: step(list[i - 1]), next: step(list[i + 1]), index: i + 1, count: list.length };
+  };
+  function framePage(c: Context, art: Artifact, v: Version, sig: string, path: { href: string; title: string }[], folder: Project | null = null) {
     const kind = v.kind ?? art.kind;
     const base = `/a/${art.slug}/${sig}/`;
     const originalFile = kind === 'markdown' ? 'source.md' : kind === 'json' ? 'source.json' : kind === 'pdf' ? v.entry_path : null;
+    // Screen sizes for pages that lay themselves out (HTML, sites); readers and PDFs follow the window.
+    const sized = kind === 'html' || kind === 'site';
+    const screen = sized ? parseScreen(c.req.query('w')) : null;
     const page = renderFramePage({
       title: art.title, version: v.number, path, src: base + encodePath(v.entry_path),
       original: originalFile ? { href: base + encodePath(originalFile), name: v.original_name } : null,
+      sizes: sized ? { base: new URL(c.req.url).pathname, screen } : null,
+      steps: folder ? folderSteps(folder, art, screen) : null,
     }, loc(c));
     return c.html(page, 200, { 'Content-Security-Policy': FRAME_PAGE_CSP });
   }
@@ -349,7 +362,7 @@ export function createContentApp(deps: ContentDeps): Hono {
     // Counts as a view of the artifact; the signed redirect that follows never counts.
     if (isHumanNavigation(c)) visits.view(art.id, clientIp(c), c.req.header('user-agent') ?? '', nowMs());
     const sig = signPath(keys.pathSig, { artifactId: art.id, versionId: version.id, epoch: art.access_epoch }, nowS());
-    if (wantsFrame(c)) return framePage(c, art, version, sig, framePath(project!, granting));
+    if (wantsFrame(c)) return framePage(c, art, version, sig, framePath(project!, granting), project!);
     return redirect(c, `/a/${art.slug}/${sig}/${encodePath(version.entry_path)}`);
   });
 

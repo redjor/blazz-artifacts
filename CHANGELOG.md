@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Visitor bar: HTML pages and ZIP sites can be viewed at Desktop, Tablet (820 × 1180) or Mobile (390 × 844) size
+  (`?w=tablet`, `?w=mobile`), the artifact centred at that size; artifacts opened from a folder get previous / next
+  links and their position (`2 / 5`), keeping the chosen size. Still no script on the page.
 - Markdown: ` ```mermaid ` blocks show as diagrams (flowchart, state, sequence, class, ER, XY charts), drawn as SVG at
   upload time with `beautiful-mermaid`, in the page's typeface and colours, light and dark; still no script on the page.
   Other diagram types stay code blocks. Already published documents get them after

@@ -14,3 +14,4 @@ the decisions and their reasons.
 - [08 — Command palette](08-command-palette.md): `Ctrl/Cmd+K` to reach an artifact, a folder or an action.
 - [09 — Sub-folder order](09-sub-folder-order.md): order sub-folders in the folder panel, like its artifacts.
 - [10 — Artifact bar](10-artifact-bar.md): a top bar above every artifact for visitors, through a script-free frame page.
+- [11 — Screen sizes and folder steps](11-screen-sizes-and-steps.md): Desktop, Tablet and Mobile sizes in the visitor bar, previous / next through a folder.

@@ -52,7 +52,8 @@ open for sandboxed pages); the admin SPA bundles the same files. No third-party 
 
 Artifact bar (design 10): a browser navigation (`Sec-Fetch-Dest: document`) to an entry gets a script-free frame
 page instead of the redirect: a top bar (folder path, title, version, Original, Open alone) and the artifact in an
-`<iframe>` on its signed path, which allows framing by the content origin only.
+`<iframe>` on its signed path, which allows framing by the content origin only. HTML pages and sites get a
+screen-size switch (`?w=tablet|mobile`, design 11); through a folder, previous / next links in visitor order.
 
 Link previews (design 06): on those entry URLs, a known link-preview service (Slack, Teams, iMessage…) gets an Open
 Graph page (title, excerpt, signed thumbnail URL `/og/<artifact>/<version>?s=…`, 24 h) instead of the redirect; people,

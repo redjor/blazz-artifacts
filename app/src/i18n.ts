@@ -48,6 +48,16 @@ const en = {
   'bar.openAlone': 'Open alone',
   'bar.openAloneTitle': 'Open the artifact on its own, full screen',
   'bar.downloadTitle': 'Download the original file',
+  'bar.size.label': 'Screen size',
+  'bar.size.desktop': 'Desktop (window width)',
+  'bar.size.tablet': 'Tablet ({w} × {h})',
+  'bar.size.mobile': 'Mobile ({w} × {h})',
+  'bar.steps': 'Folder navigation',
+  'bar.prev': 'Previous',
+  'bar.next': 'Next',
+  'bar.prevTitle': 'Previous: {title}',
+  'bar.nextTitle': 'Next: {title}',
+  'bar.position': 'Artifact {i} of {n}',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -94,6 +104,16 @@ const fr: Record<MessageKey, string> = {
   'bar.openAlone': 'Ouvrir seul',
   'bar.openAloneTitle': 'Ouvrir l’artéfact seul, en plein écran',
   'bar.downloadTitle': 'Télécharger le fichier original',
+  'bar.size.label': 'Taille d’écran',
+  'bar.size.desktop': 'Ordinateur (largeur de la fenêtre)',
+  'bar.size.tablet': 'Tablette ({w} × {h})',
+  'bar.size.mobile': 'Mobile ({w} × {h})',
+  'bar.steps': 'Navigation dans le dossier',
+  'bar.prev': 'Précédent',
+  'bar.next': 'Suivant',
+  'bar.prevTitle': 'Précédent\u202f: {title}',
+  'bar.nextTitle': 'Suivant\u202f: {title}',
+  'bar.position': 'Artéfact {i} sur {n}',
 };
 
 export const MESSAGES: Record<Locale, Record<MessageKey, string>> = { en, fr };

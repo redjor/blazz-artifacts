@@ -122,3 +122,70 @@ test('barre : la page de dossier a la barre (chemin, thème) et un seul titre pr
   assert.match(html, /<label for="theme-toggle" class="bar-btn theme-btn"/);
   assert.equal((html.match(/<h1/g) ?? []).length, 1);
 });
+
+// Screen sizes and folder navigation (design 11).
+
+const sizeLinks = (html: string) =>
+  [...html.matchAll(/<a class="size-btn" href="([^"]+)"( aria-current="true")?/g)].map((m) => ({ href: m[1].replaceAll('&amp;', '&'), current: !!m[2] }));
+const stepLinks = (html: string) =>
+  Object.fromEntries([...html.matchAll(/<a class="bar-btn step" rel="(prev|next)" href="([^"]+)"/g)].map((m) => [m[1], m[2]]));
+
+test('barre : tailles d’écran pour les pages HTML et les sites, iframe à la taille choisie', async () => {
+  const h = await setup({ artifactBar: true });
+  await seedArtifact(h, { slug: 'maquette', visibility: 'public', kind: 'html', files: PAGE });
+  const desktop = await (await nav(h, '/a/maquette')).text();
+  assert.deepEqual(sizeLinks(desktop), [
+    { href: '/a/maquette', current: true },
+    { href: '/a/maquette?w=tablet', current: false },
+    { href: '/a/maquette?w=mobile', current: false },
+  ]);
+  assert.match(desktop, /<iframe class="artifact" src=/);
+
+  const mobile = await (await nav(h, '/a/maquette?w=mobile')).text();
+  assert.match(mobile, /<div class="stage"><iframe class="artifact size-mobile" src="\/a\/maquette\/~/);
+  assert.deepEqual(sizeLinks(mobile).map((l) => l.current), [false, false, true]);
+  assert.equal((await nav(h, '/a/maquette?w=mobile', { dest: null })).status, 302, 'scripts still get the redirect');
+
+  const unknown = await (await nav(h, '/a/maquette?w=watch')).text();
+  assert.match(unknown, /<iframe class="artifact" src=/, 'unknown size: full width');
+});
+
+test('barre : pas de tailles d’écran pour un document, un PDF ou du JSON', async () => {
+  const h = await setup({ artifactBar: true });
+  await seedArtifact(h, { slug: 'doc', visibility: 'public', kind: 'markdown', files: DOC });
+  await seedArtifact(h, { slug: 'contrat', visibility: 'public', kind: 'pdf', entry: 'contrat.pdf', files: { 'contrat.pdf': '%PDF-1.4' } });
+  for (const slug of ['doc', 'contrat']) {
+    const html = await (await nav(h, `/a/${slug}?w=mobile`)).text();
+    assert.deepEqual(sizeLinks(html), [], slug);
+    assert.match(html, /<iframe class="artifact" src=/, slug);
+  }
+});
+
+test('barre : précédent et suivant dans l’ordre du dossier, en gardant la taille d’écran', async () => {
+  const h = await setup({ artifactBar: true });
+  upsertProject(h.db, 'serie', { visibility: 'public', title: 'Série' });
+  for (const slug of ['un', 'deux', 'trois']) {
+    await seedArtifact(h, { slug, visibility: 'private', project: 'serie', kind: 'html', files: PAGE, title: slug.toUpperCase() });
+  }
+  const order = ['un', 'deux', 'trois'];
+  h.db.prepare('UPDATE artifacts SET project_position = ? WHERE slug = ?').run(0, 'un');
+  h.db.prepare('UPDATE artifacts SET project_position = ? WHERE slug = ?').run(1, 'deux');
+  h.db.prepare('UPDATE artifacts SET project_position = ? WHERE slug = ?').run(2, 'trois');
+
+  const first = await (await nav(h, '/d/serie/a/un')).text();
+  assert.deepEqual(stepLinks(first), { next: '/d/serie/a/deux' });
+  assert.match(first, /<span class="bar-btn step" aria-disabled="true"/, 'no previous: disabled');
+  assert.match(first, /1\s*\/\s*3/);
+
+  const middle = await (await nav(h, '/d/serie/a/deux?w=mobile')).text();
+  assert.deepEqual(stepLinks(middle).prev?.replaceAll('&amp;', '&'), '/d/serie/a/un?w=mobile');
+  assert.deepEqual(stepLinks(middle).next?.replaceAll('&amp;', '&'), '/d/serie/a/trois?w=mobile');
+  assert.match(middle, /title="[^"]*UN"/, 'previous title in the tooltip');
+  assert.equal(sizeLinks(middle)[0].href, '/d/serie/a/deux', 'size links stay on the folder address');
+
+  const last = await (await nav(h, `/d/serie/a/${order[2]}`)).text();
+  assert.deepEqual(stepLinks(last), { prev: '/d/serie/a/deux' });
+
+  const alone = await (await nav(h, '/a/un')).text();
+  assert.equal(alone.includes('class="bar-btn step"'), false, 'not opened through the folder: no stepping');
+});
