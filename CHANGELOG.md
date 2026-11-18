@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Paste to publish: `Ctrl/⌘+V` in the gallery (or “Paste to publish” in the Create menu) opens the publish dialog
+  with the copied file, or with copied HTML, JSON or Markdown text, titled after its `<title>`, `<h1>` or `# `
+  heading. A file dropped on an artifact card becomes its next version, with an Undo that brings the previous one back.
 - Live preview and quick look: the artifact panel shows the artifact itself, scaled down; `Space` on a card (or
   “Quick look” in its menu, or a click on the preview) opens it full window over the gallery, `←`/`→` move to the
   next one, with Desktop, Tablet and Mobile sizes. Signed-path files may now be framed by the admin origin as well,

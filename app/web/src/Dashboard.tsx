@@ -7,16 +7,17 @@ import { ArtifactDrawer, type LinkActions } from './ArtifactPanel.tsx';
 import { FolderCard, FolderMenu, FolderRow, folderKey, folderOfKey, type FolderActions, type NamedFolder } from './FolderCard.tsx';
 import { copyFolderLink as copyFolderLinkOf, shareFolderFor7Days } from './folderLinks.ts';
 import { deleteChildrenNote, FolderDrawer, type TabId } from './FolderPanel.tsx';
-import { ACCEPT_ALL, artifactOpenLabel, compareText, KIND_FILTERS, kindLabel, kindTileLabel, VISIBILITY_ORDER, visibilityLabel, visibilityShort } from './format.ts';
+import { ACCEPT_ALL, artifactOpenLabel, compareText, formatDay, KIND_FILTERS, kindLabel, kindTileLabel, VISIBILITY_ORDER, visibilityLabel, visibilityShort } from './format.ts';
 import { getLocale, setLocale, t, tn, type Locale, type MessageKey } from './i18n/index.ts';
 import { LanguageSwitch } from './LanguageSwitch.tsx';
-import { CheckIcon, ChevronDownIcon, CloseIcon, FilterIcon, FolderPlusIcon, GridIcon, KIND_ICON, KeyboardIcon, ListIcon, LogoutIcon, PinIcon, PlusIcon, SearchIcon, TrashIcon, UploadIcon, VISIBILITY_ICON } from './icons.tsx';
+import { CheckIcon, ChevronDownIcon, ClipboardIcon, CloseIcon, FilterIcon, FolderPlusIcon, GridIcon, KIND_ICON, KeyboardIcon, ListIcon, LogoutIcon, PinIcon, PlusIcon, SearchIcon, TrashIcon, UploadIcon, VISIBILITY_ICON } from './icons.tsx';
 import { hasOpenLayer, isEditable } from './layers.ts';
 import { Popover, type PopoverHandle } from './Popover.tsx';
 import { ancestorsOf, childrenOf, folderPath, openerOf, sharedVia, survivingParent, treeOptions, type TreeFolder } from './folderTree.ts';
 import { FolderBreadcrumb } from './FolderBreadcrumb.tsx';
 import { NewFolderDialog } from './NewFolderDialog.tsx';
 import { QuickLook } from './Preview.tsx';
+import { pastedFile } from './paste.ts';
 import { PublishDialog } from './PublishDialog.tsx';
 import { SelectionBar, type BulkVisibility, type TagsOp } from './SelectionBar.tsx';
 import { TrashView } from './TrashView.tsx';
@@ -80,6 +81,7 @@ const SHORTCUTS: { keys: (string | MessageKey)[]; label: MessageKey }[] = [
   { keys: ['Ctrl/⌘', 'K'], label: 'shortcut.palette' },
   { keys: ['/'], label: 'shortcut.search' },
   { keys: ['N'], label: 'shortcut.publish' },
+  { keys: ['Ctrl/⌘', 'V'], label: 'shortcut.paste' },
   { keys: ['←', '↑', '→', '↓'], label: 'shortcut.move' },
   { keys: ['key.enter'], label: 'shortcut.open' },
   { keys: ['key.space'], label: 'shortcut.quickLook' },
@@ -125,6 +127,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const [sort, setSortState] = useState<Sort>(sortPref.read);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  // A file dragged over an artifact card or row (design 15): dropping it adds a version to that artifact.
+  const [fileOver, setFileOver] = useState<string | null>(null);
   // Bottom toast; `undo` adds an Undo button (and Ctrl/Cmd+Z) for a deletion to the trash or a visibility change.
   const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
   const setNotice = useCallback((text: string | null) => setToast(text === null ? null : { text }), []);
@@ -429,6 +433,20 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Ctrl/⌘+V outside a text field and any dialog: paste to publish (design 15).
+  const onPasteRef = useRef<(e: ClipboardEvent) => void>(() => {});
+  useEffect(() => {
+    onPasteRef.current = (e: ClipboardEvent) => {
+      if (inTrash || !e.clipboardData || isEditable(e.target) || hasOpenLayer()) return;
+      if (publishPasted([...e.clipboardData.files], e.clipboardData.getData('text/plain'))) e.preventDefault();
+    };
+  });
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => onPasteRef.current(e);
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, []);
+
   const focusCard = (id: string) => {
     setFocusId(id);
     list.current?.querySelector<HTMLElement>(`[data-card="${CSS.escape(id)}"]`)?.focus();
@@ -474,6 +492,82 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   };
 
   const run = (fn: () => Promise<unknown>, ok?: string) => fn().then(() => ok && setNotice(ok)).catch((e) => setNotice((e as Error).message));
+
+  /**
+   * Paste to publish (design 15): a copied file, or copied text that reads as a document (HTML, JSON, Markdown),
+   * opens the usual publish dialog. True when something was taken.
+   */
+  const publishPasted = (files: File[], text: string): boolean => {
+    if (files[0]) {
+      setPending(files[0]);
+      return true;
+    }
+    const now = new Date();
+    const time = now.toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' });
+    const file = pastedFile(text, t('paste.defaultTitle', { date: formatDay(now.toISOString()), time }));
+    if (file) {
+      setPending(file);
+      return true;
+    }
+    if (text.trim()) setNotice(t('paste.notDocument'));
+    return false;
+  };
+  // From the “Create” menu: reading the clipboard needs the browser's permission; Ctrl/⌘+V never does.
+  const pasteFromMenu = async () => {
+    let text: string;
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      setNotice(t('paste.denied'));
+      return;
+    }
+    if (!text.trim()) setNotice(t('paste.empty'));
+    else publishPasted([], text);
+  };
+
+  /** A file dropped on an artifact becomes its next version; Undo makes the previous one current again. */
+  const replaceByDrop = async (a: ArtifactDto, file: File) => {
+    const before = a.version;
+    const form = new FormData();
+    form.set('file', file);
+    setNotice(t('drop.uploading', { title: a.title }));
+    let updated: ArtifactDto;
+    try {
+      updated = await api.replace(a.id, form);
+    } catch (e) {
+      setNotice((e as Error).message);
+      return;
+    }
+    await reload();
+    setToast({
+      text: t('drop.newVersion', { title: a.title, n: updated.version?.number ?? '' }),
+      undo: before ? () => void run(async () => { await api.restore(a.id, before.id); await reload(); }, t('notice.restored', { n: before.number })) : undefined,
+    });
+  };
+  const hasFiles = (e: DragEvent) => e.dataTransfer.types.includes('Files');
+  const fileDropFor = (a: ArtifactDto) => ({
+    over: fileOver === a.id,
+    handlers: {
+      onDragOver: (e: DragEvent) => {
+        if (selecting || !hasFiles(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        if (fileOver !== a.id) setFileOver(a.id);
+      },
+      onDragLeave: (e: DragEvent) => {
+        if (!(e.currentTarget as Node).contains(e.relatedTarget as Node | null)) setFileOver((cur) => (cur === a.id ? null : cur));
+      },
+      onDrop: (e: DragEvent) => {
+        if (selecting || !hasFiles(e)) return;
+        e.preventDefault();
+        e.stopPropagation(); // not a new artifact: the gallery's own drop must not run
+        setDragging(false);
+        setFileOver(null);
+        const file = e.dataTransfer.files[0];
+        if (file) void replaceByDrop(a, file);
+      },
+    },
+  });
 
   /** Share for 7 days: switch to “link” if needed (confirmation if visitors lose access), create the link, copy it. */
   const share = async (a: ArtifactDto): Promise<boolean> => {
@@ -810,6 +904,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   ];
 
   const selectedSummary = selected ? items.find((a) => a.id === selected) : undefined;
+  const fileOverItem = fileOver ? items.find((a) => a.id === fileOver) : undefined;
+  const fileOverTitle = fileOverItem?.title;
+  const fileOverNext = (fileOverItem?.version?.number ?? 0) + 1;
   // Position of the open artifact: if its card disappears (deletion), focus goes to its neighbour.
   const lastIndex = useRef(0);
   useEffect(() => {
@@ -836,7 +933,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
 
   return (
     <div className="min-h-dvh" onDragOver={(e) => { if (!e.dataTransfer.types.includes('Files')) return; e.preventDefault(); setDragging(true); }}
-      onDragLeave={(e) => { if (!e.relatedTarget) setDragging(false); }} onDrop={onDrop}>
+      onDragLeave={(e) => { if (!e.relatedTarget) { setDragging(false); setFileOver(null); } }} onDrop={onDrop}>
       {/* Top bar on every page: the path on the left (the open folder carries its actions menu); Share in a folder, then the account tools. */}
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-line bg-canvas px-3.5">
         <FolderBreadcrumb
@@ -992,6 +1089,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
                   <button type="button" aria-keyshortcuts="N" onClick={() => { close(); pick(ACCEPT_ALL); }} className={menuItem}>
                     <UploadIcon className="size-4 text-muted" /><span className="flex-1">{t('shortcut.publish')}</span><kbd>N</kbd>
                   </button>
+                  <button type="button" aria-keyshortcuts="Control+V Meta+V" onClick={() => { close(); void pasteFromMenu(); }} className={menuItem}>
+                    <ClipboardIcon className="size-4 text-muted" /><span className="flex-1">{t('paste.menu')}</span><kbd>Ctrl/⌘V</kbd>
+                  </button>
                   <button type="button" onClick={() => { close(); setNewFolder({ moveIds: [] }); }} className={menuItem}>
                     <FolderPlusIcon className="size-4 text-muted" />{currentFolder ? t('gallery.newSubfolder') : t('common.newFolder')}
                   </button>
@@ -1064,7 +1164,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
                 const card = folderKey(f.name);
                 return <FolderCard key={card} f={f} tabbable={card === tabbableId} onFocusCard={() => setFocusId(card)} sharedViaTitle={sharedViaTitleOf(f)} {...folderActionsFor(f)} />;
               })}
-              {visible.map((a) => <ArtifactCard key={a.id} a={a} tabbable={a.id === tabbableId} onFocusCard={() => setFocusId(a.id)} selecting={selecting} snippet={hits?.get(a.id)} {...actionsFor(a)} />)}
+              {visible.map((a) => <ArtifactCard key={a.id} a={a} tabbable={a.id === tabbableId} onFocusCard={() => setFocusId(a.id)} selecting={selecting} snippet={hits?.get(a.id)} fileDrop={fileDropFor(a)} {...actionsFor(a)} />)}
             </ul>
           ) : (
             <ul ref={list} onKeyDown={onListKey} className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
@@ -1077,8 +1177,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
                 const act = actionsFor(a);
                 const tabbable = a.id === tabbableId;
                 const priv = a.visibility === 'private';
+                const drop = fileDropFor(a);
                 return (
-                  <li key={a.id} className={`group relative flex items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4 ${act.checked ? 'bg-surface-2' : ''}`}>
+                  <li key={a.id} {...drop.handlers} className={`group relative flex items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4 ${drop.over ? 'drop-over' : act.checked ? 'bg-surface-2' : ''}`}>
                     <button type="button" data-static data-card={a.id} tabIndex={tabbable ? 0 : -1} onFocus={() => setFocusId(a.id)} onClick={selecting ? act.onToggleSelect : act.onPreview}
                       draggable={!selecting} onDragStart={(e) => { e.dataTransfer.setData(CARD_DRAG_TYPE, a.id); e.dataTransfer.effectAllowed = 'move'; }}
                       aria-label={selecting ? t('select.check', { title: a.title }) : artifactOpenLabel(a, false)} aria-pressed={selecting ? act.checked : undefined} aria-keyshortcuts="E X"
@@ -1130,7 +1231,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-50 grid place-items-center bg-[var(--scrim)] p-6">
           <div className="enter-fade flex items-center gap-3 rounded-2xl border border-dashed border-line-strong bg-surface px-8 py-6 text-lg">
-            <UploadIcon className="size-6 text-muted" /> {t('gallery.dropToPublish')}
+            <UploadIcon className="size-6 text-muted" /> {fileOverTitle ? t('drop.toReplace', { title: fileOverTitle, n: fileOverNext }) : t('gallery.dropToPublish')}
           </div>
         </div>
       )}

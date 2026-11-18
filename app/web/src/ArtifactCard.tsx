@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type DragEvent } from 'react';
 import { artifactOpenLabel, formatCount, formatDate, formatDay, formatViews, kindLabel, relativeDate, visibilityLabel, visibilityShort } from './format.ts';
 import { t } from './i18n/index.ts';
 import { CheckIcon, ChevronDownIcon, CopyIcon, FolderIcon, KIND_ICON, MoreIcon, OpenIcon, PinIcon, PlusIcon, ShareIcon, SlidersIcon, VISIBILITY_ICON, WarningIcon, EyeIcon } from './icons.tsx';
@@ -246,10 +246,17 @@ export function SelectCheck({ checked, selecting, onToggle, className, onThumb =
   );
 }
 
-export function ArtifactCard({ a, tabbable, onFocusCard, selecting, snippet, ...actions }: CardActions & {
+/** A file dragged over an artifact (design 15): it becomes the artifact's next version when dropped. */
+export interface FileDrop {
+  over: boolean;
+  handlers: { onDragOver: (e: DragEvent) => void; onDragLeave: (e: DragEvent) => void; onDrop: (e: DragEvent) => void };
+}
+
+export function ArtifactCard({ a, tabbable, onFocusCard, selecting, snippet, fileDrop, ...actions }: CardActions & {
   a: ArtifactDto; tabbable: boolean; onFocusCard: () => void; selecting: boolean;
   /** Search context when the text matched (design 07). */
   snippet?: SnippetPart[] | null;
+  fileDrop?: FileDrop;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [thumb, onThumbError] = useThumbnail(a.thumbnailUrl);
@@ -257,13 +264,13 @@ export function ArtifactCard({ a, tabbable, onFocusCard, selecting, snippet, ...
   // The check sits where the version badge is: the badge slides right while the check shows.
   const badgeLeft = selecting ? 'left-[3.25rem]' : 'left-3 group-focus-within:left-[3.25rem] group-hover:left-[3.25rem] [@media(hover:none)]:left-3';
   return (
-    <li className={`group relative min-w-0 ${menuOpen ? 'z-20' : ''}`}>
+    <li className={`group relative min-w-0 ${menuOpen ? 'z-20' : ''}`} {...fileDrop?.handlers}>
       {/* While selecting, a click toggles the card instead of opening it (aria-pressed tells its state). */}
       <button type="button" data-static data-card={a.id} tabIndex={tabbable ? 0 : -1} onFocus={onFocusCard} onClick={selecting ? actions.onToggleSelect : actions.onPreview}
         draggable={!selecting} onDragStart={(e) => { e.dataTransfer.setData(CARD_DRAG_TYPE, a.id); e.dataTransfer.effectAllowed = 'move'; }}
         aria-label={selecting ? t('select.check', { title: a.title }) : artifactOpenLabel(a)} aria-pressed={selecting ? checked : undefined}
         aria-keyshortcuts="E X"
-        className={`card block w-full overflow-hidden rounded-2xl border bg-surface text-left transition-[border-color] ${checked ? 'border-ink ring-1 ring-ink' : 'border-line hover:border-line-strong'}`}>
+        className={`card block w-full overflow-hidden rounded-2xl border bg-surface text-left transition-[border-color] ${fileDrop?.over ? 'drop-over border-ring' : checked ? 'border-ink ring-1 ring-ink' : 'border-line hover:border-line-strong'}`}>
         <span className="relative block">
           <span aria-hidden="true" className={`band kind-${a.kind} @container relative block aspect-[2/1] overflow-hidden`}>
             <span className="sheet-back absolute top-[8.5%] right-[10.5%] left-[12.5%] h-full" />
