@@ -39,6 +39,7 @@ export const FolderPlusIcon = (p: P) => (
   <Svg {...p}><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" /><path d="M12 11.5v5M9.5 14h5" /></Svg>
 );
 export const FolderIcon = (p: P) => <Svg {...p}><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" /></Svg>;
+export const ChevronLeftIcon = (p: P) => <Svg {...p}><path d="m14.5 6.5-5.5 5.5 5.5 5.5" /></Svg>;
 export const ChevronRightIcon = (p: P) => <Svg {...p}><path d="m9.5 6.5 5.5 5.5-5.5 5.5" /></Svg>;
 /** Filled folder (folder cards): flat, inherited tint. */
 export const FolderFilledIcon = ({ className = 'size-5' }: P) => (

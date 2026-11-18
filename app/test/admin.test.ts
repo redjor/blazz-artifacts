@@ -39,7 +39,7 @@ function uploadForm(name: string, data: string, fields: Record<string, string> =
 test('CSP stricte et en-têtes sur le serveur admin', async () => {
   const { admin } = await adminSetup();
   const res = await admin.request('/api/session');
-  assert.equal(res.headers.get('content-security-policy'), "default-src 'self'; img-src 'self' data:; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+  assert.equal(res.headers.get('content-security-policy'), "default-src 'self'; img-src 'self' data:; style-src 'self'; frame-src https://artifacts.test; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   assert.deepEqual(await res.json(), { authenticated: false, csrfToken: null, viaToken: false });
 });
 

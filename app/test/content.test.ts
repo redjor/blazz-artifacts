@@ -55,7 +55,8 @@ test('PDF servi sans sandbox', async () => {
   await seedArtifact(h, { slug: 'doc', visibility: 'public', kind: 'pdf', entry: 'document.pdf', files: { 'document.pdf': '%PDF-1.4' } });
   const { res } = await follow(h, '/a/doc');
   assert.equal(res.headers.get('content-type'), 'application/pdf');
-  assert.equal(res.headers.get('content-security-policy'), "frame-ancestors 'self'");
+  // Framed by the visitor bar (content origin) and the admin preview (admin origin, design 14), nobody else.
+  assert.equal(res.headers.get('content-security-policy'), "frame-ancestors 'self' https://hub.test");
 });
 
 test('Markdown : sandbox sans scripts', async () => {

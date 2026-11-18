@@ -10,7 +10,9 @@ import { createApiRoutes } from './api.ts';
 import { csrfGuard, endSession, originGuard, requireSession, sessionMiddleware, startSession, tokenMiddleware, type AdminEnv } from './auth.ts';
 import { serveSpa } from './spa.ts';
 
-export const ADMIN_CSP = "default-src 'self'; img-src 'self' data:; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+/** Strict CSP; frames only from the content origin (live preview and quick look, design 14). */
+export const adminCsp = (contentOrigin: string) =>
+  `default-src 'self'; img-src 'self' data:; style-src 'self'; frame-src ${contentOrigin}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`;
 
 export interface AdminDeps { db: Db; cfg: Config; keys: Keys; loginLimiter: RateLimiter; webDist?: string; now?: () => number }
 
@@ -19,10 +21,11 @@ export function createAdminApp(deps: AdminDeps): Hono<AdminEnv> {
   const { db, cfg, loginLimiter } = deps;
   const nowMs = () => (deps.now ?? Date.now)();
   const app = new Hono<AdminEnv>();
+  const csp = adminCsp(new URL(cfg.publicContentUrl).origin);
 
   app.use('*', async (c, next) => {
     await next();
-    c.res.headers.set('Content-Security-Policy', ADMIN_CSP);
+    c.res.headers.set('Content-Security-Policy', csp);
     c.res.headers.set('X-Content-Type-Options', 'nosniff');
     c.res.headers.set('Referrer-Policy', 'same-origin');
     c.res.headers.set('X-Frame-Options', 'DENY');

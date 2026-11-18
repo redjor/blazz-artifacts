@@ -16,6 +16,7 @@ import { Popover, type PopoverHandle } from './Popover.tsx';
 import { ancestorsOf, childrenOf, folderPath, openerOf, sharedVia, survivingParent, treeOptions, type TreeFolder } from './folderTree.ts';
 import { FolderBreadcrumb } from './FolderBreadcrumb.tsx';
 import { NewFolderDialog } from './NewFolderDialog.tsx';
+import { QuickLook } from './Preview.tsx';
 import { PublishDialog } from './PublishDialog.tsx';
 import { SelectionBar, type BulkVisibility, type TagsOp } from './SelectionBar.tsx';
 import { TrashView } from './TrashView.tsx';
@@ -81,6 +82,7 @@ const SHORTCUTS: { keys: (string | MessageKey)[]; label: MessageKey }[] = [
   { keys: ['N'], label: 'shortcut.publish' },
   { keys: ['←', '↑', '→', '↓'], label: 'shortcut.move' },
   { keys: ['key.enter'], label: 'shortcut.open' },
+  { keys: ['key.space'], label: 'shortcut.quickLook' },
   { keys: ['E'], label: 'shortcut.manage' },
   { keys: ['X'], label: 'shortcut.select' },
   { keys: ['Ctrl/⌘', 'A'], label: 'shortcut.selectAll' },
@@ -133,6 +135,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const [selection, setSelection] = useState<string[]>([]);
   // Command palette (design 08), Ctrl/Cmd+K.
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // Quick look (design 14): the artifact shown full window, over the gallery (and the panel, when open).
+  const [quickLook, setQuickLook] = useState<string | null>(null);
   const bulkBusy = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
@@ -438,6 +442,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       const folder = folderOfKey(id);
       if (folder) setFolderOpen({ name: folder });
       else openArtifact(id);
+      return;
+    }
+    // Space: quick look, as in a file manager (Enter still opens in a tab); while selecting, Space toggles as before.
+    if (e.key === ' ' && !e.shiftKey && !selecting && !folderOfKey(id)) {
+      if (!items.find((a) => a.id === id)?.version) return;
+      e.preventDefault();
+      setQuickLook(id);
       return;
     }
     if (e.key === 'x' || e.key === 'X') {
@@ -778,6 +789,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
     onNewFolder: () => setNewFolder({ moveIds: [a.id] }),
     onManage: () => openArtifact(a.id),
     onPreview: () => void run(() => openPreview(a.id)),
+    onQuickLook: () => setQuickLook(a.id),
     onCopy: () => void copyLink(a),
     onShare: () => void share(a),
     onTogglePin: () => void togglePin(a),
@@ -1163,8 +1175,17 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       {loaded && selected && (
         <ArtifactDrawer id={selected} summary={selectedSummary} order={artifactOrder} projects={projectNames} paths={folderPaths} tagNames={tagCounts.map((t) => t.name)} links={links}
           confirmMove={confirmMove} onNavigate={(id) => { go(project, id, true); setFocusId(id); }} onClose={closeDrawer} onChanged={reload} onDelete={deleteArtifact} trashOn={trash.days > 0}
-          onNotice={(text, undo) => setToast({ text, undo })}
+          onNotice={(text, undo) => setToast({ text, undo })} onQuickLook={setQuickLook}
           dirtyRef={drawerDirty} restoreFocus={() => cardFocusTarget(selected)} />
+      )}
+      {loaded && quickLook && (
+        <QuickLook id={quickLook} order={artifactOrder} items={items} onNavigate={setQuickLook} onClose={() => setQuickLook(null)} onError={setNotice}
+          onManage={(id) => {
+            setQuickLook(null);
+            if (id !== selected) openArtifact(id);
+          }}
+          // Over the panel, focus goes back into it; over the gallery, to the card last looked at.
+          restoreFocus={selected ? undefined : () => cardFocusTarget(quickLook)} />
       )}
     </div>
   );

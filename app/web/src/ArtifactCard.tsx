@@ -1,13 +1,15 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { artifactOpenLabel, formatCount, formatDate, formatDay, formatViews, kindLabel, relativeDate, visibilityLabel, visibilityShort } from './format.ts';
 import { t } from './i18n/index.ts';
-import { CheckIcon, ChevronDownIcon, CopyIcon, FolderIcon, KIND_ICON, MoreIcon, OpenIcon, PinIcon, PlusIcon, ShareIcon, SlidersIcon, VISIBILITY_ICON, WarningIcon } from './icons.tsx';
+import { CheckIcon, ChevronDownIcon, CopyIcon, FolderIcon, KIND_ICON, MoreIcon, OpenIcon, PinIcon, PlusIcon, ShareIcon, SlidersIcon, VISIBILITY_ICON, WarningIcon, EyeIcon } from './icons.tsx';
 import { linkWithoutLink } from './SharePopover.tsx';
 import { Popover } from './Popover.tsx';
 import type { ArtifactDto, SnippetPart } from './types.ts';
 
 export interface CardActions {
   onManage: () => void; onPreview: () => void; onCopy: () => void; onShare: () => void; onTogglePin: () => void;
+  /** Full-window look without leaving the gallery (design 14). */
+  onQuickLook: () => void;
   /** Existing folders (names), targets of “Move to…”. */
   folders: string[];
   onMove: (project: string | null) => void; onNewFolder: () => void;
@@ -23,7 +25,7 @@ const chip = 'bg-black/65 text-white shadow-sm ring-1 ring-white/15';
 
 const menuItem = 'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-surface-2 aria-disabled:cursor-default aria-disabled:hover:bg-transparent';
 
-export function ActionsMenu({ a, onManage, onPreview, onCopy, onShare, onTogglePin, folders, onMove, onNewFolder, checked, onToggleSelect, onOpenChange, triggerClass, tabIndex }: CardActions & {
+export function ActionsMenu({ a, onManage, onPreview, onQuickLook, onCopy, onShare, onTogglePin, folders, onMove, onNewFolder, checked, onToggleSelect, onOpenChange, triggerClass, tabIndex }: CardActions & {
   a: ArtifactDto; onOpenChange?: (o: boolean) => void; triggerClass: string; tabIndex?: number;
 }) {
   const priv = a.visibility === 'private';
@@ -51,6 +53,11 @@ export function ActionsMenu({ a, onManage, onPreview, onCopy, onShare, onToggleP
       {(close) => (
         <>
           <button type="button" className={menuItem} onClick={() => { close(); onPreview(); }}><OpenIcon className="size-4 text-muted" />{t('common.open')}</button>
+          {a.version && (
+            <button type="button" className={menuItem} aria-keyshortcuts="Space" onClick={() => { close(); onQuickLook(); }}>
+              <EyeIcon className="size-4 text-muted" /><span className="flex-1">{t('preview.quickLook')}</span><kbd className="text-xs text-muted">{t('key.space')}</kbd>
+            </button>
+          )}
           <button type="button" className={menuItem} aria-disabled={priv || undefined} aria-describedby={priv ? `copy-hint-${a.id}` : undefined}
             onClick={() => { if (priv) return; close(); onCopy(); }}>
             <CopyIcon className={`size-4 ${priv ? 'text-line-strong' : 'text-muted'}`} />

@@ -17,3 +17,4 @@ the decisions and their reasons.
 - [11 — Screen sizes and folder steps](11-screen-sizes-and-steps.md): Desktop, Tablet and Mobile sizes in the visitor bar, previous / next through a folder.
 - [12 — Artifact description](12-artifact-description.md): an optional text under the title, on folder pages, link previews and in search.
 - [13 — One “Share” entry point](13-share-popover.md): a Share popover in the artifact panel, visibility applied at once with an undo, link artifacts nobody can open flagged.
+- [14 — Live preview and quick look](14-live-preview-and-quick-look.md): the artifact live in its panel, a full-window quick look with Space and arrows.

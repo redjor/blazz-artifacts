@@ -16,7 +16,7 @@ Every content response gets, whatever its type:
 - `Content-Security-Policy: sandbox …` **without** `allow-same-origin` (HTML and sites:
   `allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads`; Markdown and
   JSON readers and folder pages: same without `allow-scripts`) and `frame-ancestors 'none'`, except signed-path files:
-  `frame-ancestors 'self'` (see "Artifact bar" below);
+  `frame-ancestors 'self' <admin origin>` (see "Artifact bar" and "Admin preview" below);
 - `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` (`SAMEORIGIN` on
   signed-path files);
 - `Cache-Control: no-store` except served files (`private, max-age=3600`).
@@ -85,6 +85,18 @@ only (`frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`): an artifact runs
 frame another one, and no other site can frame any of them. Every other response keeps `DENY`. Requests without fetch
 metadata (scripts, `curl`), link previews and the frame's own requests keep the redirect. `ARTIFACT_BAR=0` restores
 the redirect for everyone.
+
+### Admin preview
+
+The artifact panel shows the artifact live and the gallery has a full-window quick look (design 14). Both frame a
+signed admin preview path, so signed-path files also name the admin origin (`PUBLIC_HUB_URL`) in `frame-ancestors`,
+and the admin CSP allows that one origin in `frame-src` (`frame-src <content origin>`); `default-src 'self'` still
+governs everything else, and the admin itself is never framed (`frame-ancestors 'none'`). Browsers that honour CSP
+ignore `X-Frame-Options` when `frame-ancestors` is present; older ones apply `SAMEORIGIN` and simply show no preview.
+The framed artifact keeps its opaque origin (server sandbox) and the admin adds its own `sandbox` attribute on top:
+no `allow-same-origin`, no top navigation, no modal dialogs over the admin (PDFs, which Chrome refuses to render in a
+sandboxed frame, get none: they run no script). An artifact therefore cannot read or drive the admin page; the worst
+it can do inside the frame is what it can do on its own page.
 
 ### Link previews
 

@@ -4,8 +4,11 @@ export const SANDBOX_STATIC =
   "sandbox allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads; frame-ancestors 'none'";
 export const PDF_CSP = "frame-ancestors 'none'";
 
-/** Signed-path files may be framed by the content origin only: the artifact frame page (design 10). */
-export const framedBySelf = (csp: string) => csp.replace("frame-ancestors 'none'", "frame-ancestors 'self'");
+/**
+ * Signed-path files may be framed by the content origin (the artifact frame page, design 10) and by the admin origin
+ * (live preview and quick look, design 14), by no other site.
+ */
+export const framedBy = (csp: string, adminOrigin: string) => csp.replace("frame-ancestors 'none'", `frame-ancestors 'self' ${adminOrigin}`);
 
 /**
  * Artifact frame page (design 10): not sandboxed, so that its origin is the content origin and the signed path it

@@ -6,6 +6,7 @@ import { Audience } from './Audience.tsx';
 import { formatBytes, formatCount, formatDate, formatViews, kindLabel, modifiedText, normalizeLabel, visibilityLabel } from './format.ts';
 import { t, tn, type MessageKey } from './i18n/index.ts';
 import { ChevronDownIcon, ChevronUpIcon, CloseIcon, FolderIcon, KIND_ICON, OpenIcon, PinIcon, ShareIcon, VISIBILITY_ICON, WarningIcon } from './icons.tsx';
+import { LivePreview } from './Preview.tsx';
 import { linkWithoutLink, SharePopover } from './SharePopover.tsx';
 import { ProjectInput, TagsInput } from './Labels.tsx';
 import { isEditable, useLayer } from './layers.ts';
@@ -62,16 +63,17 @@ function VersionThumb({ v }: { v: VersionDto }) {
   return <span aria-hidden="true" className={`tile kind-${v.kind} grid aspect-[8/5] w-16 shrink-0 place-items-center rounded-md`}><Icon className="size-4" /></span>;
 }
 
-/** Large thumbnail at the top of “Details”, with manual image upload. */
-function ThumbnailSection({ view, pending, onPick }: { view: ArtifactDto; pending: boolean; onPick: (file: File) => void }) {
+/** The artifact live at the top of “Details” (design 14), then its gallery thumbnail with manual image upload. */
+function ThumbnailSection({ view, pending, onPick, onQuickLook }: { view: ArtifactDto; pending: boolean; onPick: (file: File) => void; onQuickLook: () => void }) {
   const [thumb, onError] = useThumbnail(view.thumbnailUrl);
   const input = useRef<HTMLInputElement>(null);
   const hintId = useId();
   if (!view.version) return null;
   return (
     <Section>
-      {thumb && <ThumbImage src={thumb} onError={onError} className="aspect-[8/5] w-full rounded-xl" />}
+      <LivePreview a={view} onQuickLook={onQuickLook} />
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        {thumb && <ThumbImage src={thumb} onError={onError} className="aspect-[8/5] w-16 shrink-0 rounded-md" />}
         <p id={hintId} className="min-w-0 flex-1 text-sm text-muted">
           {thumb ? t('thumb.shown') : t('thumb.none')}
         </p>
@@ -207,7 +209,7 @@ export interface LinkActions {
  * Side panel of an artifact (full screen on mobile): header with actions, three tabs, ↑/↓ navigation
  * in the gallery's current order. Each tab keeps its draft: saving one does not clear the other.
  */
-export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, links, dirtyRef, confirmMove, trashOn, onNavigate, onClose, onChanged, onDelete, onNotice, restoreFocus }: {
+export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, links, dirtyRef, confirmMove, trashOn, onQuickLook, onNavigate, onClose, onChanged, onDelete, onNotice, restoreFocus }: {
   id: string; summary: ArtifactDto | undefined; order: string[]; projects: string[]; paths?: Record<string, string>; tagNames: string[]; links: LinkActions;
   /** Read by the gallery to confirm before a Back/Forward navigation. */
   dirtyRef: RefObject<boolean>;
@@ -220,6 +222,8 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
   onDelete: (a: ArtifactDto) => Promise<boolean>;
   /** The hub keeps deleted artifacts in a trash (the delete button says so). */
   trashOn: boolean;
+  /** Full-window look at the artifact (design 14); the panel closes first. */
+  onQuickLook: (id: string) => void;
   restoreFocus: () => HTMLElement | null;
 }) {
   const [tab, setTab] = useState<TabId>('info');
@@ -554,7 +558,7 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]">
           {/* Details */}
           <div role="tabpanel" id={`${baseId}-panel-info`} aria-labelledby={`${baseId}-tab-info`} hidden={tab !== 'info'} className="space-y-6 px-5 py-6 sm:px-7">
-            <ThumbnailSection view={view} pending={pending === 'thumb'} onPick={uploadThumb} />
+            <ThumbnailSection view={view} pending={pending === 'thumb'} onPick={uploadThumb} onQuickLook={() => onQuickLook(view.id)} />
             <Section>
               <form onSubmit={saveInfo} className="space-y-4">
                 <label className="block space-y-1 text-sm">

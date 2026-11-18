@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Live preview and quick look: the artifact panel shows the artifact itself, scaled down; `Space` on a card (or
+  “Quick look” in its menu, or a click on the preview) opens it full window over the gallery, `←`/`→` move to the
+  next one, with Desktop, Tablet and Mobile sizes. Signed-path files may now be framed by the admin origin as well,
+  and the admin CSP allows the content origin in `frame-src` (see docs/security.md, “Admin preview”).
 - Artifact panel: one **Share** button replaces “Copy link” and “Share for 7 days”. Its popover changes the visibility
   at once (with an Undo; making public and leaving code access still ask), shows the address that works with Copy, or
   creates a 7-day link. The Access tab applies visibility at once too; only a secret code keeps its Apply button.

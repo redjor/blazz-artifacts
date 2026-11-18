@@ -25,7 +25,7 @@ import { ancestors, children } from '../folder-tree.ts';
 import { renderFolderPage } from './folder-page.ts';
 import { checkOgImage, renderOgPage, signOgImage } from './og.ts';
 import { decodeGrant, encodeGrant, GRANT_TTL_S, grantCookieName, isGrantValid } from './grant.ts';
-import { FRAME_PAGE_CSP, framedBySelf, PDF_CSP, SANDBOX_SCRIPTS, SANDBOX_STATIC } from './headers.ts';
+import { FRAME_PAGE_CSP, framedBy, PDF_CSP, SANDBOX_SCRIPTS, SANDBOX_STATIC } from './headers.ts';
 import { parseScreen, renderFramePage, type Screen } from './frame-page.ts';
 import { injectShim } from './shim.ts';
 import { contentTypeFor } from './mime.ts';
@@ -42,6 +42,7 @@ export function createContentApp(deps: ContentDeps): Hono {
   const { db, cfg, keys, codeLimiter } = deps;
   const nowMs = () => (deps.now ?? Date.now)();
   const nowS = () => Math.floor(nowMs() / 1000);
+  const adminOrigin = new URL(cfg.publicHubUrl).origin;
   const app = new Hono();
   const visits = createVisitRecorder(db, cfg.hubSecret);
   // Language of the visitor pages: HUB_LOCALE, or the visitor's Accept-Language with HUB_LOCALE=auto.
@@ -124,7 +125,7 @@ export function createContentApp(deps: ContentDeps): Hono {
       'Content-Length': String(info.size),
       'Cache-Control': 'private, max-age=3600',
       'Access-Control-Allow-Origin': '*',
-      'Content-Security-Policy': framedBySelf(csp),
+      'Content-Security-Policy': framedBy(csp, adminOrigin),
       'X-Frame-Options': 'SAMEORIGIN',
     });
     if (attachment) headers.set('Content-Disposition', 'attachment');
