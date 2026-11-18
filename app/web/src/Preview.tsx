@@ -5,17 +5,18 @@ import { formatDate, kindLabel, visibilityLabel } from './format.ts';
 import { t } from './i18n/index.ts';
 import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, EyeIcon, OpenIcon, SlidersIcon, VISIBILITY_ICON } from './icons.tsx';
 import { isEditable, useLayer } from './layers.ts';
-import type { ArtifactDto, VersionDto } from './types.ts';
+import type { ArtifactDto, Kind, VersionDto } from './types.ts';
 
 // Live preview in the artifact panel and quick look (design 14). The artifact is framed on a signed admin preview
 // path of the content origin (the admin CSP allows that origin in frame-src, the content server lets the admin origin
 // frame signed paths). On top of the server's CSP sandbox, the iframe gets its own sandbox: no same origin, no top
 // navigation, no modal dialogs over the admin. Chrome refuses PDFs in a sandboxed frame: a PDF has no script anyway.
 const SANDBOX = 'allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads';
-const sandboxFor = (a: ArtifactDto) => (a.kind === 'pdf' ? undefined : SANDBOX);
+/** By the kind of the version shown (an older version may be of another kind than the artifact today). */
+const sandboxFor = (kind: Kind, minimal = false) => (kind === 'pdf' ? undefined : minimal ? 'allow-scripts' : SANDBOX);
 
 /** Pages that lay themselves out; readers and PDFs follow the frame. */
-const sized = (a: ArtifactDto) => a.kind === 'html' || a.kind === 'site';
+const sized = (kind: Kind) => kind === 'html' || kind === 'site';
 
 /** Signed preview address of the current version (valid an hour); null while loading, 'failed' on error. */
 function usePreviewUrl(id: string, versionId: string | null | undefined): string | null | 'failed' {
@@ -39,8 +40,9 @@ export function LivePreview({ a, onQuickLook }: { a: ArtifactDto; onQuickLook: (
   return (
     <div className="relative aspect-[8/5] w-full overflow-hidden rounded-xl border border-line bg-white">
       {url && url !== 'failed' && (
-        <iframe key={url} src={url} title={t('preview.frameTitle', { title: a.title })} tabIndex={-1} aria-hidden="true" loading="lazy" sandbox={sandboxFor(a)}
-          className={`pointer-events-none absolute top-0 left-0 border-0 ${sized(a) ? 'h-[200%] w-[200%] origin-top-left scale-50' : 'size-full'}`} />
+        // Inert: an artifact that focuses itself on load must not pull focus into this picture of it. Scripts only.
+        <iframe key={url} src={url} title={t('preview.frameTitle', { title: a.title })} tabIndex={-1} aria-hidden="true" inert loading="lazy" sandbox={sandboxFor(a.kind, true)}
+          className={`pointer-events-none absolute top-0 left-0 border-0 ${sized(a.kind) ? 'h-[200%] w-[200%] origin-top-left scale-50' : 'size-full'}`} />
       )}
       {url === 'failed' && <p className="grid size-full place-items-center bg-surface-2 text-sm text-muted">{t('preview.failed')}</p>}
       <button type="button" onClick={onQuickLook} aria-label={t('preview.quickLookLabel', { title: a.title })} aria-keyshortcuts="Space"
@@ -90,6 +92,8 @@ export function QuickLook({ id, order, items, onNavigate, onClose, onManage, onE
         e.preventDefault();
         go(e.key === 'ArrowRight' ? 1 : -1);
       } else if (e.key === ' ') {
+        // On one of its own controls, Space activates that control (the Close button included).
+        if ((e.target as HTMLElement | null)?.closest?.('button, a, select, input, textarea, [role="radio"]')) return;
         e.preventDefault();
         onClose();
       }
@@ -104,7 +108,7 @@ export function QuickLook({ id, order, items, onNavigate, onClose, onManage, onE
   if (!a) return null;
   const VisIcon = VISIBILITY_ICON[a.visibility];
   const btn = 'tip grid size-9 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-ink disabled:opacity-35 disabled:hover:bg-transparent';
-  const shownScreen = sized(a) ? screen : 'desktop';
+  const shownScreen = sized(a.kind) ? screen : 'desktop';
   return createPortal(
     <div ref={layer} className="fixed inset-0 z-50">
       <div aria-hidden="true" className="drawer-scrim absolute inset-0 bg-[var(--scrim)]" onClick={onClose} />
@@ -123,7 +127,7 @@ export function QuickLook({ id, order, items, onNavigate, onClose, onManage, onE
               <span aria-hidden="true">·</span><VisIcon className="size-3.5" />{visibilityLabel(a.visibility)}
             </p>
           </div>
-          {sized(a) && (
+          {sized(a.kind) && (
             <div role="radiogroup" aria-label={t('preview.screen')} className="hidden items-center gap-0.5 rounded-full bg-surface-2 p-0.5 md:flex">
               {SCREENS.map((s) => (
                 <button key={s} type="button" role="radio" aria-checked={screen === s} onClick={() => setScreen(s)}
@@ -142,7 +146,7 @@ export function QuickLook({ id, order, items, onNavigate, onClose, onManage, onE
         <div className={`grid min-h-0 flex-1 place-items-center overflow-auto ${shownScreen === 'desktop' ? '' : 'bg-surface-2 p-4 sm:p-6'}`}>
           {url === 'failed' ? <p className="text-sm text-muted">{t('preview.failed')}</p>
             : !url ? <p className="text-sm text-muted">{t('common.loading')}</p>
-              : <iframe key={url} src={url} title={t('preview.frameTitle', { title: a.title })} sandbox={sandboxFor(a)} className={`block border-0 bg-white ${SCREEN_CLASS[shownScreen]}`} />}
+              : <iframe key={url} src={url} title={t('preview.frameTitle', { title: a.title })} sandbox={sandboxFor(a.kind)} className={`block border-0 bg-white ${SCREEN_CLASS[shownScreen]}`} />}
         </div>
       </div>
     </div>,
@@ -183,7 +187,7 @@ function ComparePane({ a, v, versions, screen, onPick, side }: {
       <div className={`grid min-h-0 flex-1 place-items-center overflow-auto ${screen === 'desktop' ? '' : 'bg-surface-2 p-3'}`}>
         {url === 'failed' ? <p className="text-sm text-muted">{t('preview.failed')}</p>
           : !url ? <p className="text-sm text-muted">{t('common.loading')}</p>
-            : <iframe key={url} src={url} title={t('compare.frameTitle', { n: v.number })} sandbox={sandboxFor(a)} className={`block border-0 bg-white ${SCREEN_CLASS[screen]}`} />}
+            : <iframe key={url} src={url} title={t('compare.frameTitle', { n: v.number })} sandbox={sandboxFor(v.kind)} className={`block border-0 bg-white ${SCREEN_CLASS[sized(v.kind) ? screen : 'desktop']}`} />}
       </div>
     </section>
   );
@@ -203,7 +207,9 @@ export function VersionCompare({ a, versions, left: initialLeft, right: initialR
   useLayer({ el: layer, modal: true, onEscape: onClose });
   const l = versions.find((v) => v.id === left) ?? versions[versions.length - 1];
   const r = versions.find((v) => v.id === right) ?? versions[0];
-  const shown = sized(a) ? screen : 'desktop';
+  // Sizes when either side lays itself out; each side applies them only to such a version.
+  const sizable = sized(l.kind) || sized(r.kind);
+  const shown = sizable ? screen : 'desktop';
   const btn = 'tip grid size-9 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-ink';
   return createPortal(
     <div ref={layer} className="fixed inset-0 z-50">
@@ -215,7 +221,7 @@ export function VersionCompare({ a, versions, left: initialLeft, right: initialR
             <h2 className="truncate text-[15px] font-medium">{t('compare.title', { title: a.title })}</h2>
             <p className="text-xs text-muted">{t('compare.hint')}</p>
           </div>
-          {sized(a) && (
+          {sizable && (
             <div role="radiogroup" aria-label={t('preview.screen')} className="hidden items-center gap-0.5 rounded-full bg-surface-2 p-0.5 md:flex">
               {SCREENS.map((s) => (
                 <button key={s} type="button" role="radio" aria-checked={screen === s} onClick={() => setScreen(s)}

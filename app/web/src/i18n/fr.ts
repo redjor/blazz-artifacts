@@ -25,8 +25,6 @@ export const fr: Messages = {
   'share.manage': 'Liens, audience et code secret…',
   'confirm.makePublic': 'Rendre « {title} » public ? Toute personne qui a son adresse le verra.',
   'confirm.leaveCode': 'Quitter l’accès par code secret ? Le code est effacé et les visiteurs qui l’ont saisi perdent l’accès.',
-  'confirm.reviveLinks.one': '{n} ancien lien de partage refonctionne avec l’accès par lien. Continuer ?',
-  'confirm.reviveLinks.other': '{n} anciens liens de partage refonctionnent avec l’accès par lien. Continuer ?',
   'notice.visibilityChanged': 'Visibilité : {visibility}',
   'notice.visibilityRestored': 'Visibilité rétablie : {visibility}',
   'card.noActiveLink': 'Aucun lien actif : personne ne peut l’ouvrir',

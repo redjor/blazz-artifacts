@@ -180,7 +180,8 @@ test('barre : précédent et suivant dans l’ordre du dossier, en gardant la ta
   const middle = await (await nav(h, '/d/serie/a/deux?w=mobile')).text();
   assert.deepEqual(stepLinks(middle).prev?.replaceAll('&amp;', '&'), '/d/serie/a/un?w=mobile');
   assert.deepEqual(stepLinks(middle).next?.replaceAll('&amp;', '&'), '/d/serie/a/trois?w=mobile');
-  assert.match(middle, /title="[^"]*UN"/, 'previous title in the tooltip');
+  assert.match(middle, /title="Previous: UN"/, 'previous title in the tooltip, from its translation');
+  assert.match(first, /<span class="sr">Artifact 1 of 3<\/span>/, 'position read in words');
   assert.equal(sizeLinks(middle)[0].href, '/d/serie/a/deux', 'size links stay on the folder address');
 
   const last = await (await nav(h, `/d/serie/a/${order[2]}`)).text();

@@ -404,6 +404,8 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
     if ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || isEditable(e.target)) return;
     const t = e.target as Node;
     if (t !== panel.current && !header.current?.contains(t) && !tablist.current?.contains(t)) return;
+    // Not from a menu opened in the header (the Share popover): its own options are there.
+    if ((t as HTMLElement).closest?.('[role="group"]')) return;
     e.preventDefault();
     go(e.key === 'ArrowDown' ? 1 : -1);
   };
@@ -474,6 +476,11 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
   const saveAccess = (e: FormEvent) => {
     e.preventDefault();
     if (!access) return;
+    // Link chosen before the links had loaded, and none is usable after all: create one, as from the popover.
+    if (access.visibility === 'link' && detail && !detail.links.some((l) => l.active)) {
+      void applyVisibility(view.visibility, 'link');
+      return;
+    }
     void act('access', () => api.update(view.id, { visibility: access.visibility, ...(access.visibility === 'code' && access.code ? { code: access.code } : {}) }), t('notice.accessUpdated'), () => setAccess(null));
   };
 
@@ -482,35 +489,56 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
    * “code” erases the code (no undo, a confirmation); making it public asks first. Switching to “link” without a usable
    * link creates a 7-day one (otherwise nobody could open it); old links that would work again are announced.
    */
-  const changeVisibility = async (to: Visibility) => {
+  const changeVisibility = (to: Visibility): 'tab' | 'applied' => {
     const from = view.visibility;
-    if (to === from) return;
-    if (to === 'code') {
-      setAccess({ visibility: 'code', code: '' });
+    if (to === from) {
+      setAccess(null); // back to the saved choice: a draft (code, link) goes away
+      return 'applied';
+    }
+    // A choice to make first, in the Access tab: a code to type, or earlier links that would work again (revoke them
+    // or keep them, as before design 13); also while the links are not loaded yet.
+    const revived = detail ? detail.links.filter((l) => l.active).length : null;
+    if (to === 'code' || (to === 'link' && revived !== 0)) {
+      setAccess({ visibility: to, code: '' });
       setTab('access');
-      return;
+      return 'tab';
     }
-    const revived = to === 'link' ? (detail?.links.filter((l) => l.active).length ?? 0) : 0;
-    if (to === 'link' && revived === 0) {
-      setAccess(null);
-      await viaLinks(() => links.share(view)); // asks before cutting public or code access
-      return;
-    }
-    if (to === 'public' && !window.confirm(t('confirm.makePublic', { title: view.title }))) return;
-    if (revived > 0 && !window.confirm(tn('confirm.reviveLinks', revived))) return;
-    if (from === 'code' && !window.confirm(t('confirm.leaveCode'))) return;
+    if (to === 'public' && !window.confirm(t('confirm.makePublic', { title: view.title }))) return 'applied';
+    if (to !== 'link' && from === 'code' && !window.confirm(t('confirm.leaveCode'))) return 'applied';
+    void applyVisibility(from, to);
+    return 'applied';
+  };
+  const applyVisibility = async (from: Visibility, to: Visibility) => {
     const artifactId = view.id;
-    const undo = from === 'code' ? undefined : () => {
-      api.update(artifactId, { visibility: from }).then(() => {
-        onChanged();
-        onNotice(t('notice.visibilityRestored', { visibility: visibilityLabel(from).toLowerCase() }));
-        if (currentId.current === artifactId) void refresh().catch(() => {});
-      }, (e) => onNotice((e as Error).message));
-    };
-    await act('access', () => api.update(artifactId, { visibility: to }), null, () => {
-      setAccess(null);
+    const here = () => currentId.current === artifactId;
+    setError(null);
+    setAccess(null);
+    setPending('access');
+    try {
+      if (to === 'link') {
+        // No usable link: a 7-day one, otherwise nobody could open it (asks before cutting public or code access).
+        await links.share(view);
+        if (here()) await refresh();
+        return;
+      }
+      await api.update(artifactId, { visibility: to });
+      // Told even when ↑/↓ moved the panel to another artifact meanwhile: the change is saved either way.
+      onChanged();
+      const undo = from === 'code' ? undefined : () => {
+        api.update(artifactId, { visibility: from }).then(() => {
+          onChanged();
+          onNotice(t('notice.visibilityRestored', { visibility: visibilityLabel(from).toLowerCase() }));
+          if (currentId.current === artifactId) void refresh().catch(() => {});
+        }, (e) => onNotice((e as Error).message));
+      };
       onNotice(t('notice.visibilityChanged', { visibility: visibilityLabel(to).toLowerCase() }), undo);
-    });
+      if (here()) await refresh();
+    } catch (e) {
+      if (here()) setError((e as Error).message);
+      else onNotice((e as Error).message);
+    } finally {
+      if (here()) setPending(null);
+    }
   };
 
   const expiresAt = () => linkExpiresAt(linkForm);
@@ -594,8 +622,8 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
               <OpenIcon className="size-4" />{t('common.open')}
             </button>
             <SharePopover view={view} detail={detail} busy={pending === 'access'} triggerClass={ghost}
-              onVisibility={(v) => void changeVisibility(v)}
-              onShare={() => void viaLinks(() => links.share(view))}
+              onVisibility={changeVisibility}
+              onShare={() => void applyVisibility(view.visibility, 'link')}
               onCopy={(url) => void copyText(url).then(() => onNotice(t('common.linkCopied')), () => onNotice(t('common.copyFailed')))}
               onManage={() => { setTab('access'); requestAnimationFrame(() => tabRefs.current.access?.focus()); }} />
           </div>
@@ -702,10 +730,24 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
               </p>
             )}
             <Section>
-              {/* Applied at once (design 13); only a secret code needs the form and its Apply button. */}
+              {/* Applied at once (design 13); a secret code, or earlier links coming back, need the form and Apply. */}
               <form onSubmit={saveAccess} className="space-y-3">
-                <VisibilityPicker value={accessValues.visibility} disabled={pending === 'access'}
-                  onChange={(visibility) => (visibility === 'code' ? setAccess({ visibility, code: '' }) : void changeVisibility(visibility))} />
+                <VisibilityPicker immediate value={accessValues.visibility} disabled={pending === 'access'} onChange={(visibility) => void changeVisibility(visibility)} />
+                {access?.visibility === 'link' && view.visibility !== 'link' && (
+                  <>
+                    {detail ? (
+                      <RevivedLinksNote links={detail.links} pending={pending === 'revoke-old'}
+                        onRevoke={() => void act('revoke-old', async () => {
+                          for (const l of detail.links.filter((x) => x.active)) await api.revokeLink(view.id, l.id);
+                        }, t('common.oldLinksRevoked'))} />
+                    ) : <p className="text-sm text-muted">{t('links.loading')}</p>}
+                    {cutsAccess && <p className="text-xs text-warn">{t('artifact.cutsAccess')}</p>}
+                    <div className="flex flex-wrap gap-2">
+                      <button className={primary} disabled={!detail || pending === 'access'} data-autofocus>{pending === 'access' ? t('common.applying') : t('common.apply')}</button>
+                      <button type="button" className={ghost} onClick={() => setAccess(null)}>{t('common.cancel')}</button>
+                    </div>
+                  </>
+                )}
                 {accessValues.visibility === 'code' && (
                   <>
                     <label className="block space-y-1 text-sm">

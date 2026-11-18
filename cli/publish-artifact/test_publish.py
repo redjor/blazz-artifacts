@@ -394,6 +394,20 @@ class ProjectTagsFlowTest(unittest.TestCase):
                 self.run_main(argv, [])
             self.assertEqual(cm.exception.code, 2, argv)
 
+    def test_multiline_description_on_create(self):
+        art = '{"id":"1","slug":"a","title":"t","visibility":"private","url":"u","project":null,"tags":[]}'
+        code, calls, _, _ = self.run_main(['--description', 'Ligne 1\nLigne "2"'], ['[]', art])
+        self.assertEqual(code, 0)
+        line = next(x for x in calls[1].split('\n') if 'description=' in x)
+        self.assertEqual(line, 'form-string = "description=Ligne 1\\nLigne \\"2\\""', 'one config line, curl escapes')
+
+    def test_lengths_counted_like_the_server(self):
+        # 600 emoji: 600 code points but 1200 UTF-16 units, over the server's 1000.
+        for argv in (['--description', '🙂' * 600], ['-m', '🙂' * 101]):
+            with mock.patch('sys.stderr', io.StringIO()), self.assertRaises(SystemExit) as cm:
+                self.run_main(argv, [])
+            self.assertEqual(cm.exception.code, 2, argv[0])
+
     def test_description_too_long_or_out_of_place(self):
         for argv in (['--description', 'x' * 1001], ['--description', 'x', '--stats'], ['--description', 'x', '--list-versions']):
             with mock.patch('sys.stderr', io.StringIO()), self.assertRaises(SystemExit) as cm:

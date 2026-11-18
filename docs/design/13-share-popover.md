@@ -14,11 +14,14 @@ link (expired, revoked, or switched in bulk) could be opened by nobody, and noth
     share link, with its expiry) and **Copy**;
   - without a working address: “Create a 7-day link and copy it” (the existing share action);
   - “Links, audience and secret code…” opens the Access tab.
-- **Immediate visibility, with an undo** in the toast (and `Ctrl/Cmd+Z`), the same mechanism as the trash. The Access
-  tab's picker behaves the same; only a secret code still needs its form and “Apply” (a code must be typed).
-  Safeguards, as confirmations: making an artifact public; leaving “code” (the code is erased, so there is no undo);
-  switching to “link” when earlier links would work again. Switching to “link” with no usable link creates a 7-day
-  link at once, which never leaves the artifact out of reach.
+- **Immediate visibility, with an undo** in the toast (and `Ctrl/Cmd+Z`, which also works while the panel is open),
+  the same mechanism as the trash. The options are toggle buttons, not radios: arrow keys never apply a visibility
+  (Tab to an option, then Enter or Space). The Access tab's picker behaves the same.
+- **What still needs a decision** goes through the Access tab's form and “Apply”: a secret code (it must be typed),
+  and switching to “link” when earlier links would work again (with “Revoke the old links”, as before), or while the
+  links are not loaded yet. Safeguards, as confirmations: making an artifact public; leaving “code” (the code is
+  erased, so there is no undo). Switching to “link” with no usable link creates a 7-day link at once, which never
+  leaves the artifact out of reach.
 - **The dead state is visible**: a link artifact with no active link and no shared folder shows a warning in the
   card's meta line, in the popover and above its share links, with the way out (create a link).
 - The card menu keeps its quick “Copy link” and “Share for 7 days”.

@@ -22,8 +22,11 @@ export const linkWithoutLink = (a: ArtifactDto) =>
  */
 export function SharePopover({ view, detail, busy, triggerClass, onVisibility, onShare, onCopy, onManage }: {
   view: ArtifactDto; detail: ArtifactDetail | null; busy: boolean; triggerClass: string;
-  /** Immediate change; “code” needs a code and goes to the Access tab instead. */
-  onVisibility: (v: Visibility) => void;
+  /**
+   * Immediate change, or 'tab' when a choice must be made first in the Access tab (a code to type, earlier links that
+   * would work again): the popover then closes.
+   */
+  onVisibility: (v: Visibility) => 'tab' | 'applied';
   /** Creates a 7-day link (switching to link visibility) and copies it. */
   onShare: () => void;
   onCopy: (url: string) => void;
@@ -37,10 +40,9 @@ export function SharePopover({ view, detail, busy, triggerClass, onVisibility, o
       trigger={<><ShareIcon className="size-4" />{t('share.button')}<ChevronDownIcon className="-mr-1 size-4 text-muted" /></>}>
       {(close) => (
         <>
-          <VisibilityPicker compact value={view.visibility} disabled={busy}
+          <VisibilityPicker compact immediate value={view.visibility} disabled={busy}
             onChange={(v) => {
-              if (v === 'code') close();
-              onVisibility(v);
+              if (onVisibility(v) === 'tab') close();
             }} />
           <div className="mx-1 my-2 h-px bg-line" role="separator" />
           <div className="space-y-2 px-1 pb-1 text-sm" aria-live="polite">

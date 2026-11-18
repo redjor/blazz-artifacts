@@ -24,8 +24,6 @@ export const en = {
   'share.manage': 'Links, audience and secret code…',
   'confirm.makePublic': 'Make “{title}” public? Anyone with its address will see it.',
   'confirm.leaveCode': 'Leave secret-code access? The code is erased and visitors who entered it lose access.',
-  'confirm.reviveLinks.one': '{n} earlier share link works again with link access. Continue?',
-  'confirm.reviveLinks.other': '{n} earlier share links work again with link access. Continue?',
   'notice.visibilityChanged': 'Visibility: {visibility}',
   'notice.visibilityRestored': 'Visibility back to {visibility}',
   'card.noActiveLink': 'No active link: nobody can open it',

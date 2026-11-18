@@ -130,7 +130,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   // A file dragged over an artifact card or row (design 15): dropping it adds a version to that artifact.
   const [fileOver, setFileOver] = useState<string | null>(null);
   // Bottom toast; `undo` adds an Undo button (and Ctrl/Cmd+Z) for a deletion to the trash or a visibility change.
-  const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
+  // `inPanel`: the undo belongs to the artifact panel (a visibility change), where Ctrl/Cmd+Z must reach it too.
+  const [toast, setToast] = useState<{ text: string; undo?: () => void; inPanel?: boolean } | null>(null);
   const setNotice = useCallback((text: string | null) => setToast(text === null ? null : { text }), []);
   // Trash (design 04): `days` 0 means the hub deletes for good at once (no trash, a confirmation instead).
   const [trash, setTrash] = useState<{ days: number; items: TrashItemDto[] }>({ days: 30, items: [] });
@@ -398,7 +399,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
         return;
       }
       // Ctrl/Cmd+Z right after a deletion: the same as the toast's Undo (never inside a text field, which has its own).
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z' && toast?.undo && !isEditable(e.target) && !hasOpenLayer()) {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z' && toast?.undo && !isEditable(e.target) && (!hasOpenLayer() || toast.inPanel)) {
         e.preventDefault();
         runUndo();
         return;
@@ -438,7 +439,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   useEffect(() => {
     onPasteRef.current = (e: ClipboardEvent) => {
       if (inTrash || !e.clipboardData || isEditable(e.target) || hasOpenLayer()) return;
-      if (publishPasted([...e.clipboardData.files], e.clipboardData.getData('text/plain'))) e.preventDefault();
+      // Only kinds the hub publishes: a copied screenshot is not one (its text, if any, still counts).
+      const files = [...e.clipboardData.files];
+      const text = e.clipboardData.getData('text/plain');
+      if (publishPasted(files.filter(acceptedFile), text)) e.preventDefault();
+      else if (files.length && !text.trim()) setNotice(t('paste.notDocument'));
     };
   });
   useEffect(() => {
@@ -524,6 +529,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
     if (!text.trim()) setNotice(t('paste.empty'));
     else publishPasted([], text);
   };
+
+  /** A file the hub can publish, by its extension (the same list as the file picker). */
+  const acceptedFile = (f: File) => ACCEPT_ALL.split(',').some((ext) => f.name.toLowerCase().endsWith(ext));
 
   /** A file dropped on an artifact becomes its next version; Undo makes the previous one current again. */
   const replaceByDrop = async (a: ArtifactDto, file: File) => {
@@ -1238,7 +1246,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       )}
       {/* Outside #root: still announced when a modal layer makes the page inert. */}
       {createPortal(
-        <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+        <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-6 z-[60] flex justify-center px-4">
           {toast && (
             <div key={toast.text} className="enter-rise flex max-w-md items-center gap-3 rounded-xl bg-ink px-4 py-2.5 text-center text-sm text-canvas shadow-[0_10px_30px_-10px_oklch(0_0_0/0.5)]">
               <span>{toast.text}</span>
@@ -1277,12 +1285,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       {loaded && selected && (
         <ArtifactDrawer id={selected} summary={selectedSummary} order={artifactOrder} projects={projectNames} paths={folderPaths} tagNames={tagCounts.map((t) => t.name)} links={links}
           confirmMove={confirmMove} onNavigate={(id) => { go(project, id, true); setFocusId(id); }} onClose={closeDrawer} onChanged={reload} onDelete={deleteArtifact} trashOn={trash.days > 0}
-          onNotice={(text, undo) => setToast({ text, undo })} onQuickLook={setQuickLook}
+          onNotice={(text, undo) => setToast({ text, undo, inPanel: !!undo })} onQuickLook={setQuickLook}
           dirtyRef={drawerDirty} restoreFocus={() => cardFocusTarget(selected)} />
       )}
       {loaded && quickLook && (
         <QuickLook id={quickLook} order={artifactOrder} items={items} onNavigate={setQuickLook} onClose={() => setQuickLook(null)} onError={setNotice}
           onManage={(id) => {
+            // Another artifact in the panel: its unsaved edits would go without a word (a pushed entry skips the guard).
+            if (id !== selected && selected && drawerDirty.current && !window.confirm(t('common.discardConfirm'))) return;
             setQuickLook(null);
             if (id !== selected) openArtifact(id);
           }}

@@ -525,7 +525,9 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
   // Version note written or corrected afterwards (design 16); never a modification of the artifact itself.
   api.patch('/artifacts/:id/versions/:versionId', async (c) => {
     const art = mustGet(c.req.param('id'));
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    // A body without the field is a mistake, not a way to erase the note: null or blank clears it.
+    if (!body || typeof body !== 'object' || !('message' in body)) throw new HttpError(400, 'invalid_version_message');
     const message = parseVersionMessage(body.message);
     if (!setVersionMessage(db, art.id, c.req.param('versionId'), message)) throw new HttpError(404, 'version_not_found');
     return c.json(versionDto(art, getVersion(db, c.req.param('versionId'))!));

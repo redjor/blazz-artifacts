@@ -212,6 +212,17 @@ def _q(value: str) -> str:
     return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
 
 
+def _q_text(value: str) -> str:
+    """Quoted free text for a curl configuration file: line breaks become curl's \\n and \\r escapes."""
+    escaped = value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r')
+    return '"' + escaped + '"'
+
+
+def js_len(value: str) -> int:
+    """Length as the server counts it (JavaScript strings: UTF-16 code units)."""
+    return len(value.encode('utf-16-le')) // 2
+
+
 def _form_quote(value: str) -> str:
     """Quoted value for curl's -F syntax (protects ; , and \")."""
     return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
@@ -227,7 +238,7 @@ def curl_config(token: str, method: str, url: str, *, fields: dict | None = None
         'write-out = "\\n%{http_code}"',
     ]
     for key, value in (fields or {}).items():
-        lines.append(f'form-string = {_q(f"{key}={value}")}')
+        lines.append(f'form-string = {_q_text(f"{key}={value}")}')
     if file:
         path, filename = file
         lines.append(f'form = {_q("file=@" + _form_quote(str(path)) + ";filename=" + _form_quote(filename))}')
@@ -331,9 +342,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                                    ('--create-folder', args.create_folder is not None)) if on]
     if len(modes) > 1:
         p.error(f"{' and '.join(modes)} are mutually exclusive: one mode at a time")
-    if args.description is not None and len(args.description.strip()) > 1000:
+    if args.description is not None and js_len(args.description.strip()) > 1000:
         p.error('--description: 1000 characters max')
-    if args.message is not None and len(' '.join(args.message.split())) > 200:
+    if args.message is not None and js_len(' '.join(args.message.split())) > 200:
         p.error('--message: 200 characters max')
     if args.share_folder is not None or args.folder_stats is not None or args.create_folder is not None:
         # Folder: only these options apply (no path, no artifact option).

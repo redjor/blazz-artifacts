@@ -57,6 +57,7 @@ transition:background-color 150ms ease-out,color 150ms ease-out}
 .size-btn[aria-current]{background:var(--bg);color:var(--fg);box-shadow:0 1px 2px oklch(0.35 0.03 60 / 0.18)}
 .size-btn:focus-visible{outline:2px solid var(--link);outline-offset:1px}
 @media (hover:hover){.size-btn:not([aria-current]):hover{color:var(--fg)}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .steps{display:flex;align-items:center;margin-right:6px}
 .step{padding:0 8px}
 .step[aria-disabled]{opacity:.35;cursor:default}
@@ -82,13 +83,13 @@ function renderSizes(o: NonNullable<FramePageInput['sizes']>, locale: Locale): s
 function renderSteps(o: NonNullable<FramePageInput['steps']>, locale: Locale): string {
   const step = (rel: 'prev' | 'next', target: { href: string; title: string } | null) => {
     const icon = svgIcon(rel === 'prev' ? ICON_PREV : ICON_NEXT);
-    const label = tr(locale, rel === 'prev' ? 'bar.prev' : 'bar.next');
-    if (!target) return `<span class="bar-btn step" aria-disabled="true" aria-label="${escapeHtml(label)}">${icon}</span>`;
-    const title = `${label} : ${target.title}`.replace(' : ', locale === 'fr' ? ' : ' : ': ');
-    return `<a class="bar-btn step" rel="${rel}" href="${escapeHtml(target.href)}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${icon}</a>`;
+    // aria-label is ignored on a plain span: visually hidden text names the controls and the position instead.
+    if (!target) return `<span class="bar-btn step" aria-disabled="true">${icon}<span class="sr">${escapeHtml(tr(locale, rel === 'prev' ? 'bar.prev' : 'bar.next'))}</span></span>`;
+    const title = tr(locale, rel === 'prev' ? 'bar.prevTitle' : 'bar.nextTitle', { title: target.title });
+    return `<a class="bar-btn step" rel="${rel}" href="${escapeHtml(target.href)}" title="${escapeHtml(title)}">${icon}<span class="sr">${escapeHtml(title)}</span></a>`;
   };
   const position = tr(locale, 'bar.position', { i: o.index, n: o.count });
-  return `<nav class="steps" aria-label="${escapeHtml(tr(locale, 'bar.steps'))}">${step('prev', o.prev)}<span class="step-count" aria-label="${escapeHtml(position)}">${o.index} / ${o.count}</span>${step('next', o.next)}</nav>`;
+  return `<nav class="steps" aria-label="${escapeHtml(tr(locale, 'bar.steps'))}">${step('prev', o.prev)}<span class="step-count"><span aria-hidden="true">${o.index} / ${o.count}</span><span class="sr">${escapeHtml(position)}</span></span>${step('next', o.next)}</nav>`;
 }
 
 export function renderFramePage(o: FramePageInput, locale: Locale): string {

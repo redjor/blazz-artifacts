@@ -66,6 +66,12 @@ test('note de version : bornée, texte seulement, version de cet artéfact seule
   assert.equal(long.status, 400);
   assert.equal(((await long.json()) as { code: string }).code, 'version_message_too_long');
   assert.equal((await h.call(`/artifacts/${a.id}/versions/${a.version.id}`, { method: 'PATCH', body: { message: 3 } })).status, 400);
+  await h.call(`/artifacts/${a.id}/versions/${a.version.id}`, { method: 'PATCH', body: { message: 'Gardée' } });
+  for (const body of [{}, { note: 'x' }]) {
+    assert.equal((await h.call(`/artifacts/${a.id}/versions/${a.version.id}`, { method: 'PATCH', body })).status, 400, JSON.stringify(body));
+  }
+  const kept = (await (await h.call(`/artifacts/${a.id}/versions`)).json()) as Version[];
+  assert.equal(kept[0].message, 'Gardée', 'a body without the field never erases the note');
   assert.equal((await h.call(`/artifacts/${a.id}/versions/${b.version.id}`, { method: 'PATCH', body: { message: 'x' } })).status, 404, 'another artifact’s version');
 });
 
