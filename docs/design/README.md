@@ -16,3 +16,4 @@ the decisions and their reasons.
 - [10 — Artifact bar](10-artifact-bar.md): a top bar above every artifact for visitors, through a script-free frame page.
 - [11 — Screen sizes and folder steps](11-screen-sizes-and-steps.md): Desktop, Tablet and Mobile sizes in the visitor bar, previous / next through a folder.
 - [12 — Artifact description](12-artifact-description.md): an optional text under the title, on folder pages, link previews and in search.
+- [13 — One “Share” entry point](13-share-popover.md): a Share popover in the artifact panel, visibility applied at once with an undo, link artifacts nobody can open flagged.

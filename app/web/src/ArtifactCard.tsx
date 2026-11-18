@@ -1,7 +1,8 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { artifactOpenLabel, formatCount, formatDate, formatDay, formatViews, kindLabel, relativeDate, visibilityLabel, visibilityShort } from './format.ts';
 import { t } from './i18n/index.ts';
-import { CheckIcon, ChevronDownIcon, CopyIcon, FolderIcon, KIND_ICON, MoreIcon, OpenIcon, PinIcon, PlusIcon, ShareIcon, SlidersIcon, VISIBILITY_ICON } from './icons.tsx';
+import { CheckIcon, ChevronDownIcon, CopyIcon, FolderIcon, KIND_ICON, MoreIcon, OpenIcon, PinIcon, PlusIcon, ShareIcon, SlidersIcon, VISIBILITY_ICON, WarningIcon } from './icons.tsx';
+import { linkWithoutLink } from './SharePopover.tsx';
 import { Popover } from './Popover.tsx';
 import type { ArtifactDto, SnippetPart } from './types.ts';
 
@@ -94,7 +95,14 @@ export function MetaLine({ a, className = '' }: { a: ArtifactDto; className?: st
     <span className={`flex min-w-0 items-center gap-1.5 text-[13px] leading-5 text-muted ${className}`}>
       <time dateTime={a.updatedAt} title={t('common.modifiedOn', { date: formatDate(a.updatedAt) })} className="shrink-0">{relativeDate(a.updatedAt)}</time>
       <span aria-hidden="true">·</span>
-      <span className="inline-flex shrink-0 items-center gap-1"><Vis className="size-3.5" />{visibilityShort(a.visibility)}</span>
+      {/* Link visibility without a usable link (design 13): nobody can open it, say so. */}
+      {linkWithoutLink(a) ? (
+        <span className="inline-flex shrink-0 items-center gap-1 text-warn" title={t('card.noActiveLink')}>
+          <WarningIcon className="size-3.5" />{visibilityShort(a.visibility)}<span className="sr-only">{`, ${t('card.noActiveLink')}`}</span>
+        </span>
+      ) : (
+        <span className="inline-flex shrink-0 items-center gap-1"><Vis className="size-3.5" />{visibilityShort(a.visibility)}</span>
+      )}
       {a.views.total > 0 && (
         <>
           <span aria-hidden="true">·</span>

@@ -5,7 +5,8 @@ import { ThumbImage, useThumbnail } from './ArtifactCard.tsx';
 import { Audience } from './Audience.tsx';
 import { formatBytes, formatCount, formatDate, formatViews, kindLabel, modifiedText, normalizeLabel, visibilityLabel } from './format.ts';
 import { t, tn, type MessageKey } from './i18n/index.ts';
-import { ChevronDownIcon, ChevronUpIcon, CloseIcon, CopyIcon, FolderIcon, KIND_ICON, OpenIcon, PinIcon, ShareIcon, VISIBILITY_ICON } from './icons.tsx';
+import { ChevronDownIcon, ChevronUpIcon, CloseIcon, FolderIcon, KIND_ICON, OpenIcon, PinIcon, ShareIcon, VISIBILITY_ICON, WarningIcon } from './icons.tsx';
+import { linkWithoutLink, SharePopover } from './SharePopover.tsx';
 import { ProjectInput, TagsInput } from './Labels.tsx';
 import { isEditable, useLayer } from './layers.ts';
 import type { ArtifactDetail, ArtifactDto, LinkDto, VersionDto, Visibility } from './types.ts';
@@ -212,7 +213,9 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
   dirtyRef: RefObject<boolean>;
   /** The gallery's safeguard before a folder change (moving into a shared folder): false when the owner declines. */
   confirmMove: (a: ArtifactDto, to: string | null) => boolean;
-  onNavigate: (id: string) => void; onClose: () => void; onChanged: () => unknown; onNotice: (m: string) => void;
+  onNavigate: (id: string) => void; onClose: () => void; onChanged: () => unknown;
+  /** Bottom toast; `undo` adds an Undo button (visibility changes). */
+  onNotice: (m: string, undo?: () => void) => void;
   /** Deletes the artifact (gallery rules: trash and undo, or a confirmation); true when it is gone. */
   onDelete: (a: ArtifactDto) => Promise<boolean>;
   /** The hub keeps deleted artifacts in a trash (the delete button says so). */
@@ -391,7 +394,6 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
 
   const KindIcon = KIND_ICON[view.kind];
   const VisIcon = VISIBILITY_ICON[view.visibility];
-  const priv = view.visibility === 'private';
 
   const saveInfo = (e: FormEvent) => {
     e.preventDefault();
@@ -407,6 +409,42 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
     e.preventDefault();
     if (!access) return;
     void act('access', () => api.update(view.id, { visibility: access.visibility, ...(access.visibility === 'code' && access.code ? { code: access.code } : {}) }), t('notice.accessUpdated'), () => setAccess(null));
+  };
+
+  /**
+   * Visibility applied at once (design 13), with an undo. “code” needs a code: the Access tab's form instead. Leaving
+   * “code” erases the code (no undo, a confirmation); making it public asks first. Switching to “link” without a usable
+   * link creates a 7-day one (otherwise nobody could open it); old links that would work again are announced.
+   */
+  const changeVisibility = async (to: Visibility) => {
+    const from = view.visibility;
+    if (to === from) return;
+    if (to === 'code') {
+      setAccess({ visibility: 'code', code: '' });
+      setTab('access');
+      return;
+    }
+    const revived = to === 'link' ? (detail?.links.filter((l) => l.active).length ?? 0) : 0;
+    if (to === 'link' && revived === 0) {
+      setAccess(null);
+      await viaLinks(() => links.share(view)); // asks before cutting public or code access
+      return;
+    }
+    if (to === 'public' && !window.confirm(t('confirm.makePublic', { title: view.title }))) return;
+    if (revived > 0 && !window.confirm(tn('confirm.reviveLinks', revived))) return;
+    if (from === 'code' && !window.confirm(t('confirm.leaveCode'))) return;
+    const artifactId = view.id;
+    const undo = from === 'code' ? undefined : () => {
+      api.update(artifactId, { visibility: from }).then(() => {
+        onChanged();
+        onNotice(t('notice.visibilityRestored', { visibility: visibilityLabel(from).toLowerCase() }));
+        if (currentId.current === artifactId) void refresh().catch(() => {});
+      }, (e) => onNotice((e as Error).message));
+    };
+    await act('access', () => api.update(artifactId, { visibility: to }), null, () => {
+      setAccess(null);
+      onNotice(t('notice.visibilityChanged', { visibility: visibilityLabel(to).toLowerCase() }), undo);
+    });
   };
 
   const expiresAt = () => linkExpiresAt(linkForm);
@@ -489,15 +527,11 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
             <button type="button" className={primary} onClick={() => openPreview(view.id).catch((e) => setError((e as Error).message))}>
               <OpenIcon className="size-4" />{t('common.open')}
             </button>
-            <button type="button" className={`${ghost} ${priv ? 'tip' : ''}`} aria-disabled={priv || undefined} data-tip={priv ? t('card.privateHint') : undefined}
-              aria-describedby={priv ? `${baseId}-copy-hint` : undefined}
-              onClick={() => { if (!priv) void viaLinks(() => links.copy(detail ?? view)); }}>
-              <CopyIcon className="size-4" />{t('common.copyLink')}
-            </button>
-            {priv && <span id={`${baseId}-copy-hint`} className="sr-only">{t('card.privateHint')}</span>}
-            <button type="button" className={ghost} onClick={() => void viaLinks(() => links.share(view))}>
-              <ShareIcon className="size-4" />{t('common.share7')}
-            </button>
+            <SharePopover view={view} detail={detail} busy={pending === 'access'} triggerClass={ghost}
+              onVisibility={(v) => void changeVisibility(v)}
+              onShare={() => void viaLinks(() => links.share(view))}
+              onCopy={(url) => void copyText(url).then(() => onNotice(t('common.linkCopied')), () => onNotice(t('common.copyFailed')))}
+              onManage={() => { setTab('access'); requestAnimationFrame(() => tabRefs.current.access?.focus()); }} />
           </div>
         </header>
 
@@ -597,25 +631,24 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
               </p>
             )}
             <Section>
+              {/* Applied at once (design 13); only a secret code needs the form and its Apply button. */}
               <form onSubmit={saveAccess} className="space-y-3">
-                <VisibilityPicker value={accessValues.visibility} onChange={(visibility) => setAccess({ ...accessValues, visibility })} />
+                <VisibilityPicker value={accessValues.visibility} disabled={pending === 'access'}
+                  onChange={(visibility) => (visibility === 'code' ? setAccess({ visibility, code: '' }) : void changeVisibility(visibility))} />
                 {accessValues.visibility === 'code' && (
-                  <label className="block space-y-1 text-sm">
-                    <span className="text-muted">{view.hasCode && view.visibility === 'code' ? t('common.newCode') : t('common.secretCode')}</span>
-                    <input className={field} autoComplete="off" value={accessValues.code} onChange={(e) => setAccess({ ...accessValues, code: e.target.value })} />
-                  </label>
+                  <>
+                    <label className="block space-y-1 text-sm">
+                      <span className="text-muted">{view.hasCode && view.visibility === 'code' ? t('common.newCode') : t('common.secretCode')}</span>
+                      <input className={field} autoComplete="off" value={accessValues.code} data-autofocus={access?.visibility === 'code' || undefined}
+                        onChange={(e) => setAccess({ ...accessValues, code: e.target.value })} />
+                    </label>
+                    {cutsAccess && <p className="text-xs text-warn">{t('artifact.cutsAccess')}</p>}
+                    <div className="flex flex-wrap gap-2">
+                      <button className={primary} disabled={!accessDirty || codeInvalid || pending === 'access'}>{pending === 'access' ? t('common.applying') : t('common.apply')}</button>
+                      {accessDirty && <button type="button" className={ghost} onClick={() => setAccess(null)}>{t('common.cancel')}</button>}
+                    </div>
+                  </>
                 )}
-                {cutsAccess && <p className="text-xs text-warn">{t('artifact.cutsAccess')}</p>}
-                {accessValues.visibility === 'link' && view.visibility !== 'link' && detail && (
-                  <RevivedLinksNote links={detail.links} pending={pending === 'revoke-old'}
-                    onRevoke={() => void act('revoke-old', async () => {
-                      for (const l of detail.links.filter((x) => x.active)) await api.revokeLink(view.id, l.id);
-                    }, t('common.oldLinksRevoked'))} />
-                )}
-                <div className="flex flex-wrap gap-2">
-                  <button className={primary} disabled={!accessDirty || codeInvalid || pending === 'access'}>{pending === 'access' ? t('common.applying') : t('common.apply')}</button>
-                  {accessDirty && <button type="button" className={ghost} onClick={() => setAccess(null)}>{t('common.cancel')}</button>}
-                </div>
               </form>
             </Section>
 
@@ -625,6 +658,9 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
                 <button type="button" className={ghost} onClick={() => void viaLinks(() => links.share(view))}><ShareIcon className="size-4" />{t('common.share7')}</button>
               ) : (
                 <>
+                  {linkWithoutLink(view) && (
+                    <p className="flex gap-2 rounded-xl bg-warn/10 px-3.5 py-3 text-sm text-warn"><WarningIcon className="mt-0.5 size-4 shrink-0" />{t('share.noActiveLink')}</p>
+                  )}
                   <LinkCreateForm form={linkForm} onChange={setLinkForm} onSubmit={createLink} pending={pending === 'link'} />
                   {!detail ? (
                     loadFailed ? <LoadFailed onRetry={retryLoad} /> : <p className="text-sm text-muted">{t('links.loading')}</p>

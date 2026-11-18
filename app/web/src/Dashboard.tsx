@@ -123,7 +123,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const [sort, setSortState] = useState<Sort>(sortPref.read);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  // Bottom toast; `undo` adds an Undo button (and Ctrl/Cmd+Z) for a deletion to the trash.
+  // Bottom toast; `undo` adds an Undo button (and Ctrl/Cmd+Z) for a deletion to the trash or a visibility change.
   const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
   const setNotice = useCallback((text: string | null) => setToast(text === null ? null : { text }), []);
   // Trash (design 04): `days` 0 means the hub deletes for good at once (no trash, a confirmation instead).
@@ -1162,7 +1162,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       )}
       {loaded && selected && (
         <ArtifactDrawer id={selected} summary={selectedSummary} order={artifactOrder} projects={projectNames} paths={folderPaths} tagNames={tagCounts.map((t) => t.name)} links={links}
-          confirmMove={confirmMove} onNavigate={(id) => { go(project, id, true); setFocusId(id); }} onClose={closeDrawer} onChanged={reload} onDelete={deleteArtifact} trashOn={trash.days > 0} onNotice={setNotice}
+          confirmMove={confirmMove} onNavigate={(id) => { go(project, id, true); setFocusId(id); }} onClose={closeDrawer} onChanged={reload} onDelete={deleteArtifact} trashOn={trash.days > 0}
+          onNotice={(text, undo) => setToast({ text, undo })}
           dirtyRef={drawerDirty} restoreFocus={() => cardFocusTarget(selected)} />
       )}
     </div>

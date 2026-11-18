@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Artifact panel: one **Share** button replaces “Copy link” and “Share for 7 days”. Its popover changes the visibility
+  at once (with an Undo; making public and leaving code access still ask), shows the address that works with Copy, or
+  creates a 7-day link. The Access tab applies visibility at once too; only a secret code keeps its Apply button.
+  A link artifact that nobody can open (no active link, no shared folder) is flagged on its card and in the panel.
 - Artifact description: an optional text under the title, set in the artifact panel or with `--description` in the
   CLI; shown on folder pages under the card title, used by link previews instead of the excerpt, and found by the
   gallery search. The search index is rebuilt once at startup to gain the new column.
