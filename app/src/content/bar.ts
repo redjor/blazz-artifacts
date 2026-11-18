@@ -40,6 +40,8 @@ export interface BarInput {
   path: { href: string; title: string }[];
   title: string;
   version?: number | null;
+  /** Note of that version (design 16), shown with it. */
+  versionMessage?: string | null;
   /** Already rendered action buttons (links or the theme switch label). */
   actions: string;
   /** The title is the page heading (frame page); false when the page has its own <h1> (folder page). */
@@ -53,7 +55,8 @@ export const barLink = (o: { href: string; label: string; icon: string; download
 export function renderBar(o: BarInput, locale: Locale): string {
   const sep = '<span class="bar-sep" aria-hidden="true">/</span>';
   const links = o.path.map((p) => `<a href="${escapeHtml(p.href)}">${escapeHtml(p.title)}</a>${sep}`).join('');
-  const version = o.version ? `<span class="bar-version" title="${escapeHtml(tr(locale, 'bar.version', { n: o.version }))}">v${o.version}</span>` : '';
+  const versionTitle = o.versionMessage ? tr(locale, 'bar.versionNote', { n: o.version ?? '', note: o.versionMessage }) : tr(locale, 'bar.version', { n: o.version ?? '' });
+  const version = o.version ? `<span class="bar-version" title="${escapeHtml(versionTitle)}">v${o.version}</span>` : '';
   const tag = o.heading === false ? 'span' : 'h1';
   return `<header class="bar">
 <nav class="bar-path" aria-label="${tr(locale, 'folder.breadcrumb')}">${links}<${tag} class="bar-title" aria-current="page">${typography(locale, escapeHtml(o.title))}</${tag}>${version}</nav>

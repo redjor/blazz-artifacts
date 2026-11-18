@@ -163,7 +163,7 @@ export function createContentApp(deps: ContentDeps): Hono {
     const sized = kind === 'html' || kind === 'site';
     const screen = sized ? parseScreen(c.req.query('w')) : null;
     const page = renderFramePage({
-      title: art.title, version: v.number, path, src: base + encodePath(v.entry_path),
+      title: art.title, version: v.number, versionMessage: v.message, path, src: base + encodePath(v.entry_path),
       original: originalFile ? { href: base + encodePath(originalFile), name: v.original_name } : null,
       sizes: sized ? { base: new URL(c.req.url).pathname, screen } : null,
       steps: folder ? folderSteps(folder, art, screen) : null,

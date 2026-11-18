@@ -375,6 +375,25 @@ class ProjectTagsFlowTest(unittest.TestCase):
         _, calls, _, _ = self.run_main([], [existing, self.ART % 'a'])
         self.assertEqual(len(calls), 2, 'no PATCH without an option to change')
 
+    def test_version_message_on_create_and_update(self):
+        art = '{"id":"1","slug":"a","title":"t","visibility":"private","url":"u","project":null,"tags":[],"version":{"number":2,"message":"Header revu"}}'
+        code, calls, out, _ = self.run_main(['-m', '  Header   revu '], ['[]', art])
+        self.assertEqual(code, 0)
+        self.assertIn('form-string = "message=Header revu"', calls[1])
+        self.assertIn('note: Header revu', out)
+        existing = '[{"id":"1","slug":"a","visibility":"private","hasCode":false}]'
+        _, calls, _, _ = self.run_main(['--message', 'Bouton déplacé'], [existing, art])
+        self.assertIn('request = "PUT"', calls[1])
+        self.assertIn('form-string = "message=Bouton déplacé"', calls[1])
+        _, calls, _, _ = self.run_main([], [existing, art])
+        self.assertNotIn('message=', calls[1])
+
+    def test_version_message_too_long_or_out_of_place(self):
+        for argv in (['-m', 'x' * 201], ['-m', 'x', '--stats'], ['-m', 'x', '--restore', '1']):
+            with mock.patch('sys.stderr', io.StringIO()), self.assertRaises(SystemExit) as cm:
+                self.run_main(argv, [])
+            self.assertEqual(cm.exception.code, 2, argv)
+
     def test_description_too_long_or_out_of_place(self):
         for argv in (['--description', 'x' * 1001], ['--description', 'x', '--stats'], ['--description', 'x', '--list-versions']):
             with mock.patch('sys.stderr', io.StringIO()), self.assertRaises(SystemExit) as cm:
@@ -461,7 +480,8 @@ class VersionsTest(unittest.TestCase):
     ENV = {'ARTIFACT_HUB_TOKEN': TOKEN, 'ARTIFACT_HUB_URL': 'https://h.example'}
     ART = '{"id":"A1","slug":"%s","title":"t","visibility":"private","url":"u","project":null,"tags":[],"version":{"number":%d}}'
     VERSIONS = ('[{"id":"V2","number":2,"kind":"site","originalName":"b.zip","sizeBytes":20,"createdAt":"2026-02-01T00:00:00.000Z","current":true},'
-                '{"id":"V1","number":1,"kind":"html","originalName":"a.html","sizeBytes":10,"createdAt":"2026-01-01T00:00:00.000Z","current":false}]')
+                '{"id":"V1","number":1,"kind":"html","originalName":"a.html","sizeBytes":10,"createdAt":"2026-01-01T00:00:00.000Z","current":false,'
+                '"message":"Premier jet"}]')
 
     def run_main(self, argv, responses):
         calls = []
@@ -491,7 +511,7 @@ class VersionsTest(unittest.TestCase):
         self.assertIn('url = "https://h.example/api/artifacts?slug=demo"', calls[0])
         self.assertIn('url = "https://h.example/api/artifacts/A1/versions"', calls[1])
         self.assertIn('v2\t2026-02-01T00:00:00.000Z\tsite\tb.zip\t20\t* current', out)
-        self.assertIn('v1\t2026-01-01T00:00:00.000Z\thtml\ta.html\t10', out)
+        self.assertIn('v1\t2026-01-01T00:00:00.000Z\thtml\ta.html\t10\t\tPremier jet', out)
         self.assertNotIn(TOKEN, out)
 
     def test_list_versions_slug_derived_from_path(self):

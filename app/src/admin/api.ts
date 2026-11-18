@@ -14,7 +14,7 @@ import { newId } from '../ids.ts';
 import { ingestFile, stripExtension, type UploadedFile } from '../ingest/ingest.ts';
 import {
   activateVersion, bumpEpoch, bumpProjectEpoch, deleteArtifact, deleteProject, getArtifact, getArtifactBySlug, getProject, getTrashedArtifact, getVersion, insertArtifactWithVersion,
-  listFolderArtifacts, listFolderLinks, listFolders, listVersions, projectExists, recentProjectArtifacts, renameProject, restoreVersion, revokeFolderLink, setProjectOrder,
+  listFolderArtifacts, listFolderLinks, listFolders, listVersions, projectExists, recentProjectArtifacts, renameProject, restoreVersion, revokeFolderLink, setVersionMessage, setProjectOrder,
   setVersionThumb, getTags, insertLink, listArtifacts, listLinks, listTagCounts, listTrash, restoreArtifact, revokeLink, setPinned, setTags, slugHolder, trashArtifact,
   updateArtifact, upsertProject, VISIBILITIES, type Artifact, type ArtifactPatch, type TrashedArtifact, type Project, type ProjectPatch, type ShareLink, type Version, type Visibility,
 } from '../repo.ts';
@@ -83,6 +83,17 @@ function parseProject(v: unknown): string | null {
 
 /** Folder and artifact descriptions (design 12): plain text, at most this many characters. */
 const DESCRIPTION_MAX = 1000;
+/** Version note (design 16): one line. */
+const VERSION_MESSAGE_MAX = 200;
+
+/** Version note: optional plain text, trimmed, line breaks folded; empty or null clears. */
+function parseVersionMessage(v: unknown): string | null {
+  if (v === undefined || v === null) return null;
+  if (typeof v !== 'string') throw new HttpError(400, 'invalid_version_message');
+  const t = v.replace(/\s+/g, ' ').trim();
+  if (t.length > VERSION_MESSAGE_MAX) throw new HttpError(400, 'version_message_too_long', { max: VERSION_MESSAGE_MAX });
+  return t || null;
+}
 
 // Folder title, folder and artifact descriptions: optional; empty or null clears.
 function parseOptionalText(v: unknown, max: number, what: 'title' | 'description'): string | null {
@@ -179,7 +190,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
       folderVisibility: art.project === null ? null : (getProject(db, art.project)?.visibility ?? 'private'),
       url: `${cfg.publicContentUrl}/a/${art.slug}`, activeLinkUrl: activeLinkUrl(art),
       pinned: art.pinned_at !== null, pinnedAt: art.pinned_at, views: viewTotals(db, art.id, nowMs()),
-      version: v ? { id: v.id, number: v.number, originalName: v.original_name, sizeBytes: v.size_bytes, fileCount: v.file_count, createdAt: v.created_at } : null,
+      version: v ? { id: v.id, number: v.number, message: v.message, originalName: v.original_name, sizeBytes: v.size_bytes, fileCount: v.file_count, createdAt: v.created_at } : null,
       preview: previewOf(art.id, art.kind, v),
       thumbnailUrl: v?.thumb_type ? `/api/artifacts/${enc(art.id)}/thumbnail?v=${thumbStamp(v)}` : null,
     };
@@ -246,6 +257,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
       const project = parseProject(fields.project);
       const tags = parseTags((fields.tags ?? '').split(',').filter((t) => t.trim() !== ''));
       const description = fields.description === undefined ? null : parseOptionalText(fields.description, DESCRIPTION_MAX, 'description');
+      const message = parseVersionMessage(fields.message);
       const codeHash = visibility === 'code' ? await hashSecret(parseCode(fields.code)) : null;
       const id = newId();
       const versionId = newId();
@@ -255,7 +267,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
         const art = insertArtifactWithVersion(
           db,
           { id, slug, title, description, kind: r.kind, visibility, code_hash: codeHash, memory_storage: ['true', '1'].includes(fields.memoryStorage ?? '') ? 1 : 0, project, tags },
-          { id: versionId, entry_path: r.entryPath, original_name: file.originalName, size_bytes: r.sizeBytes, file_count: r.fileCount },
+          { id: versionId, entry_path: r.entryPath, original_name: file.originalName, size_bytes: r.sizeBytes, file_count: r.fileCount, message },
         );
         indexArtifact(db, cfg.dataDir, art);
         return c.json(artifactDto(art), 201);
@@ -321,11 +333,12 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
   });
 
   api.put('/artifacts/:id/content', (c) =>
-    withUpload(c, async (_fields, file) => {
+    withUpload(c, async (fields, file) => {
       const art = mustGet(c.req.param('id'));
+      const message = parseVersionMessage(fields.message);
       const versionId = newId();
       const r = await ingestFile(file, versionDir(cfg.dataDir, art.id, versionId), limits, staticLocale(cfg.locale));
-      activateVersion(db, art.id, { id: versionId, entry_path: r.entryPath, original_name: file.originalName, size_bytes: r.sizeBytes, file_count: r.fileCount }, r.kind);
+      activateVersion(db, art.id, { id: versionId, entry_path: r.entryPath, original_name: file.originalName, size_bytes: r.sizeBytes, file_count: r.fileCount, message }, r.kind);
       indexArtifact(db, cfg.dataDir, mustGet(art.id));
       await pruneVersions(db, cfg.dataDir, art.id);
       return c.json(artifactDto(mustGet(art.id)));
@@ -498,15 +511,24 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     return c.json({ ...stats, links });
   });
 
+  const versionDto = (art: Artifact, v: Version) => ({
+    id: v.id, number: v.number, kind: v.kind ?? art.kind, message: v.message, originalName: v.original_name, sizeBytes: v.size_bytes,
+    fileCount: v.file_count, createdAt: v.created_at, current: v.id === art.current_version_id,
+    thumbnailUrl: v.thumb_type ? `/api/artifacts/${enc(art.id)}/versions/${enc(v.id)}/thumbnail?v=${thumbStamp(v)}` : null,
+  });
+
   api.get('/artifacts/:id/versions', (c) => {
     const art = mustGet(c.req.param('id'));
-    return c.json(
-      listVersions(db, art.id).map((v) => ({
-        id: v.id, number: v.number, kind: v.kind ?? art.kind, originalName: v.original_name, sizeBytes: v.size_bytes,
-        fileCount: v.file_count, createdAt: v.created_at, current: v.id === art.current_version_id,
-        thumbnailUrl: v.thumb_type ? `/api/artifacts/${enc(art.id)}/versions/${enc(v.id)}/thumbnail?v=${thumbStamp(v)}` : null,
-      })),
-    );
+    return c.json(listVersions(db, art.id).map((v) => versionDto(art, v)));
+  });
+
+  // Version note written or corrected afterwards (design 16); never a modification of the artifact itself.
+  api.patch('/artifacts/:id/versions/:versionId', async (c) => {
+    const art = mustGet(c.req.param('id'));
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const message = parseVersionMessage(body.message);
+    if (!setVersionMessage(db, art.id, c.req.param('versionId'), message)) throw new HttpError(404, 'version_not_found');
+    return c.json(versionDto(art, getVersion(db, c.req.param('versionId'))!));
   });
 
   api.get('/artifacts/:id/versions/:versionId/preview', (c) => {

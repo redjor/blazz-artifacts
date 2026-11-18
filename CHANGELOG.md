@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Version notes and comparison: each version can carry a one-line note (`-m` in the CLI, a field next to “Replace
+  file…”, or written later in the History tab), shown in the history, `--list-versions` and the visitor bar's version
+  tooltip. “Compare” in the History tab shows two kept versions side by side, with screen sizes for HTML and sites.
 - Paste to publish: `Ctrl/⌘+V` in the gallery (or “Paste to publish” in the Create menu) opens the publish dialog
   with the copied file, or with copied HTML, JSON or Markdown text, titled after its `<title>`, `<h1>` or `# `
   heading. A file dropped on an artifact card becomes its next version, with an Undo that brings the previous one back.

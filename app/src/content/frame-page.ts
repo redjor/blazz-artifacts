@@ -13,6 +13,8 @@ export const parseScreen = (raw: string | undefined): Screen | null => (raw === 
 
 export interface FramePageInput {
   title: string; version: number | null;
+  /** Note of the shown version (design 16), or null. */
+  versionMessage?: string | null;
   /** Folder links from the granting folder down (empty outside a folder). */
   path: { href: string; title: string }[];
   /** Signed path of the entry: the iframe and “Open alone”. */
@@ -107,7 +109,7 @@ export function renderFramePage(o: FramePageInput, locale: Locale): string {
 <style>${CSS}</style>
 </head>
 <body>
-${renderBar({ path: o.path, title: o.title, version: o.version, actions }, locale)}
+${renderBar({ path: o.path, title: o.title, version: o.version, versionMessage: o.versionMessage, actions }, locale)}
 ${screen ? `<div class="stage">${iframe}</div>` : iframe}
 </body>
 </html>

@@ -21,6 +21,8 @@ export interface Version {
   id: string; artifact_id: string; entry_path: string; original_name: string;
   size_bytes: number; file_count: number; created_at: string;
   kind: Kind | null; number: number;
+  /** What changed in this version (design 16), or null. */
+  message: string | null;
   /** Thumbnail sent by the publish CLI (null if none). */
   thumb_type: 'webp' | 'png' | 'jpeg' | null; thumb_at: string | null;
 }
@@ -32,7 +34,7 @@ export interface ShareLink {
 export interface Session { id_hash: string; csrf_token: string; expires_at: string; created_at: string }
 
 export type NewArtifact = Pick<Artifact, 'id' | 'slug' | 'title' | 'kind' | 'visibility' | 'code_hash'> & { memory_storage?: number; project?: string | null; tags?: string[]; description?: string | null };
-export type NewVersion = Pick<Version, 'id' | 'entry_path' | 'original_name' | 'size_bytes' | 'file_count'>;
+export type NewVersion = Pick<Version, 'id' | 'entry_path' | 'original_name' | 'size_bytes' | 'file_count'> & { message?: string | null };
 
 const nowIso = () => new Date().toISOString();
 
@@ -100,9 +102,9 @@ export function listTagCounts(db: Db): LabelCount[] {
 // Call inside a transaction: the number is max+1, never reused (the highest version is never pruned).
 function insertVersion(db: Db, artifactId: string, v: NewVersion, kind: Kind, at: string): void {
   db.prepare(
-    `INSERT INTO versions (id, artifact_id, entry_path, original_name, size_bytes, file_count, created_at, kind, number)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(number), 0) + 1 FROM versions WHERE artifact_id = ?))`,
-  ).run(v.id, artifactId, v.entry_path, v.original_name, v.size_bytes, v.file_count, at, kind, artifactId);
+    `INSERT INTO versions (id, artifact_id, entry_path, original_name, size_bytes, file_count, created_at, kind, message, number)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(number), 0) + 1 FROM versions WHERE artifact_id = ?))`,
+  ).run(v.id, artifactId, v.entry_path, v.original_name, v.size_bytes, v.file_count, at, kind, v.message ?? null, artifactId);
 }
 
 export function insertArtifactWithVersion(db: Db, a: NewArtifact, v: NewVersion): Artifact {
@@ -335,6 +337,12 @@ export function restoreArtifact(db: Db, id: string): Artifact | undefined {
 
 export function getVersion(db: Db, id: string): Version | undefined {
   return db.prepare('SELECT * FROM versions WHERE id = ?').get(id) as Version | undefined;
+}
+
+/** Sets (null: clears) the note of one of the artifact's versions; false when the version is not the artifact's. */
+export function setVersionMessage(db: Db, artifactId: string, versionId: string, message: string | null): boolean {
+  const res = db.prepare('UPDATE versions SET message = ? WHERE id = ? AND artifact_id = ?').run(message, versionId, artifactId);
+  return Number(res.changes) > 0;
 }
 
 export function listVersions(db: Db, artifactId: string): Version[] {

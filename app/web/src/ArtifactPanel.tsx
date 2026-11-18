@@ -5,8 +5,8 @@ import { ThumbImage, useThumbnail } from './ArtifactCard.tsx';
 import { Audience } from './Audience.tsx';
 import { formatBytes, formatCount, formatDate, formatViews, kindLabel, modifiedText, normalizeLabel, visibilityLabel } from './format.ts';
 import { t, tn, type MessageKey } from './i18n/index.ts';
-import { ChevronDownIcon, ChevronUpIcon, CloseIcon, FolderIcon, KIND_ICON, OpenIcon, PinIcon, ShareIcon, VISIBILITY_ICON, WarningIcon } from './icons.tsx';
-import { LivePreview } from './Preview.tsx';
+import { ChevronDownIcon, ChevronUpIcon, CloseIcon, CompareIcon, FolderIcon, KIND_ICON, OpenIcon, PinIcon, ShareIcon, VISIBILITY_ICON, WarningIcon } from './icons.tsx';
+import { LivePreview, VersionCompare } from './Preview.tsx';
 import { linkWithoutLink, SharePopover } from './SharePopover.tsx';
 import { ProjectInput, TagsInput } from './Labels.tsx';
 import { isEditable, useLayer } from './layers.ts';
@@ -101,11 +101,53 @@ function LoadFailed({ onRetry }: { onRetry: () => void }) {
   );
 }
 
+/** A version's note (design 16): shown under its line, written or corrected in place. */
+function VersionNote({ v, artifactId, onSaved, onError }: { v: VersionDto; artifactId: string; onSaved: (v: VersionDto) => void; onError: (m: string | null) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const inputId = useId();
+  if (draft === null) {
+    return (
+      <span className="flex min-w-0 items-baseline gap-2 text-xs">
+        {v.message && <span className="min-w-0 break-words text-ink">{v.message}</span>}
+        <button type="button" className="shrink-0 text-muted underline-offset-2 hover:text-ink hover:underline" onClick={() => setDraft(v.message ?? '')}
+          aria-label={t(v.message ? 'history.editNoteLabel' : 'history.addNoteLabel', { n: v.number })}>
+          {v.message ? t('history.editNote') : t('history.addNote')}
+        </button>
+      </span>
+    );
+  }
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      onSaved(await api.versionNote(artifactId, v.id, draft.trim() || null));
+      setDraft(null);
+      onError(null);
+    } catch (err) {
+      onError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form onSubmit={save} className="flex w-full flex-wrap items-center gap-2" onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDraft(null); } }}>
+      <label htmlFor={inputId} className="sr-only">{t('history.noteLabel', { n: v.number })}</label>
+      <input id={inputId} autoFocus maxLength={200} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t('history.notePlaceholder')}
+        className={`${field} min-w-0 flex-1 py-1.5 text-xs`} />
+      <button className={`${ghost} py-1.5 text-xs`} disabled={busy}>{t('common.save')}</button>
+      <button type="button" className="text-xs text-muted hover:text-ink" onClick={() => setDraft(null)}>{t('common.cancel')}</button>
+    </form>
+  );
+}
+
 function History({ art, onRestore, onError }: { art: ArtifactDetail; onRestore: (v: VersionDto) => void; onError: (m: string | null) => void }) {
   const [versions, setVersions] = useState<VersionDto[] | null>(null);
   const [all, setAll] = useState(false);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // Two versions side by side (design 16): the chosen one on the left, the current one on the right.
+  const [compare, setCompare] = useState<{ left: string; right: string } | null>(null);
   // thumbnailUrl: a manual thumbnail upload does not change updatedAt, but the history must show it.
   const { id, updatedAt, thumbnailUrl } = art;
 
@@ -129,8 +171,18 @@ function History({ art, onRestore, onError }: { art: ArtifactDetail; onRestore: 
   }
   const shown = all ? versions : versions.slice(0, HISTORY_SHORT);
   const withThumbs = versions.some((v) => v.thumbnailUrl);
+  const current = versions.find((v) => v.current) ?? versions[0];
+  const replaceOne = (v: VersionDto) => setVersions((list) => list && list.map((x) => (x.id === v.id ? v : x)));
   return (
     <div className="space-y-3">
+      {versions.length > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-muted">{tn('history.count', versions.length)}</p>
+          <button type="button" className={ghost} onClick={() => setCompare({ left: versions[1].id, right: versions[0].id })}>
+            <CompareIcon className="size-4" />{t('history.compareLatest')}
+          </button>
+        </div>
+      )}
       <ul className="space-y-2">
         {shown.map((v) => (
           <li key={v.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-line p-3 text-sm">
@@ -142,8 +194,14 @@ function History({ art, onRestore, onError }: { art: ArtifactDetail; onRestore: 
                 <span className="truncate text-muted">{v.originalName}</span>
               </span>
               <span className="block text-xs text-muted">{formatDate(v.createdAt)} · {kindLabel(v.kind)} · {formatBytes(v.sizeBytes)}</span>
+              <span className="mt-1 block"><VersionNote v={v} artifactId={id} onSaved={replaceOne} onError={onError} /></span>
             </span>
             <button type="button" className={ghost} onClick={() => openPreview(id, v.id).catch((e) => onError((e as Error).message))}>{t('history.preview')}</button>
+            {!v.current && (
+              <button type="button" className={ghost} onClick={() => setCompare({ left: v.id, right: current.id })} aria-label={t('history.compareLabel', { n: v.number, current: current.number })}>
+                {t('history.compare')}
+              </button>
+            )}
             {!v.current && <button type="button" className={ghost} onClick={() => onRestore(v)}>{t('history.restore')}</button>}
           </li>
         ))}
@@ -152,6 +210,7 @@ function History({ art, onRestore, onError }: { art: ArtifactDetail; onRestore: 
         <button type="button" className={ghost} onClick={() => setAll(!all)}>{all ? t('history.showLess') : t('history.showAll', { n: versions.length })}</button>
       )}
       <p className="text-xs text-muted">{t('history.retention')}</p>
+      {compare && <VersionCompare a={art} versions={versions} left={compare.left} right={compare.right} onClose={() => setCompare(null)} />}
     </div>
   );
 }
@@ -236,6 +295,8 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [historySeen, setHistorySeen] = useState(false);
+  // Note of the next version uploaded with “Replace file…” (design 16).
+  const [replaceNote, setReplaceNote] = useState('');
   // The artifact itself failed to load: the links and history sections offer a retry instead of loading forever.
   const [loadFailed, setLoadFailed] = useState(false);
   const layer = useRef<HTMLDivElement>(null);
@@ -255,6 +316,7 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
     setInfo(null);
     setAccess(null);
     setLinkForm(EMPTY_LINK);
+    setReplaceNote('');
     setError(null);
     setPending(null);
     setLoadFailed(false);
@@ -607,17 +669,22 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
                   </span>
                 </label>
               )}
-              <button type="button" className={ghost} disabled={pending === 'replace'} onClick={() => replaceInput.current?.click()}>
-                {pending === 'replace' ? t('common.uploading') : t('content.replace')}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <input className={`${field} min-w-0 flex-1 basis-56`} maxLength={200} value={replaceNote} onChange={(e) => setReplaceNote(e.target.value)}
+                  placeholder={t('content.notePlaceholder')} aria-label={t('content.noteLabel')} />
+                <button type="button" className={ghost} disabled={pending === 'replace'} onClick={() => replaceInput.current?.click()}>
+                  {pending === 'replace' ? t('common.uploading') : t('content.replace')}
+                </button>
+              </div>
               <input ref={replaceInput} type="file" className="hidden" accept=".html,.htm,.md,.markdown,.pdf,.json,.zip"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   e.target.value = '';
                   if (!file) return;
                   const form = new FormData();
+                  if (replaceNote.trim()) form.set('message', replaceNote.trim());
                   form.set('file', file);
-                  void act('replace', () => api.replace(view.id, form), t('notice.contentReplaced'));
+                  void act('replace', () => api.replace(view.id, form), t('notice.contentReplaced'), () => setReplaceNote(''));
                 }} />
             </Section>
 

@@ -26,7 +26,7 @@ export interface ArtifactDto {
   pinned: boolean; pinnedAt: string | null;
   /** Views counted by the content server: all time and over the last 30 days. */
   views: { total: number; last30: number };
-  version: { id: string; number: number; originalName: string; sizeBytes: number; fileCount: number; createdAt: string } | null;
+  version: { id: string; number: number; message: string | null; originalName: string; sizeBytes: number; fileCount: number; createdAt: string } | null;
   /** Plain-text excerpt computed by the server (null for a PDF or an unreadable file). */
   preview: { heading: string | null; text: string | null } | null;
   /** Thumbnail of the current version, served by the admin API (relative path); null if none. */
@@ -57,6 +57,8 @@ export interface StatsDto {
 export interface VersionDto {
   id: string; number: number; kind: Kind; originalName: string; sizeBytes: number; fileCount: number; createdAt: string; current: boolean;
   thumbnailUrl: string | null;
+  /** What changed in this version (design 16), or null. */
+  message: string | null;
 }
 
 /** Folder summary: artifact count, private count, folder visibility. `name: null` = no folder. */

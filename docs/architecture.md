@@ -72,7 +72,7 @@ data/
 
 Main tables: `artifacts` (slug, title, description, kind, visibility, code hash, access epoch, current version, folder, pin,
 folder position, `deleted_at` for the trash; every read goes through the `live_artifacts` view, which leaves trashed
-rows out), `versions` (number, kind, entry path, size, thumbnail), `artifact_tags`, `projects` (folder sheets:
+rows out), `versions` (number, kind, note, entry path, size, thumbnail), `artifact_tags`, `projects` (folder sheets:
 title, description, visibility, code hash, epoch, salt, `parent_name` (FK, ON UPDATE CASCADE), `position`),
 `share_links` (artifact **or** folder target, token hash +
 encrypted token, expiry, revocation, open count), `visit_days` / `folder_visit_days` (daily aggregates),
@@ -100,19 +100,20 @@ message>", "params"?: {…} }`; codes are listed in `app/src/errors.ts`.
 | GET | `/session` | Session state and CSRF token |
 | POST | `/login`, `/logout` | Session (not available with the API token) |
 | GET | `/artifacts` | List; `?slug=` exact match, `?project=`, `?tag=` (repeatable) |
-| POST | `/artifacts` | Create (multipart: `file`, `title`, `description`, `slug`, `visibility`, `code`, `memoryStorage`, `project`, `tags`) |
+| POST | `/artifacts` | Create (multipart: `file`, `message`, `title`, `description`, `slug`, `visibility`, `code`, `memoryStorage`, `project`, `tags`) |
 | GET, PATCH, DELETE | `/artifacts/:id` | Detail with links; update title, description, slug, visibility, code, memoryStorage, project, tags, pinned; delete (to the trash, or for good with `TRASH_DAYS=0`) |
 | POST | `/artifacts/bulk` | One operation on 1 to 500 artifacts in one transaction, all or nothing (`ids`, `op`: `move`, `addTags`, `removeTags`, `visibility` without `code`, `pin`, `unpin`, `trash`, `restore`; `value`) |
 | POST | `/artifacts/:id/restore` | Bring a trashed artifact back (without a folder if its folder was deleted meanwhile) |
 | GET, DELETE | `/trash` | Trashed artifacts with their purge date; empty the trash |
 | DELETE | `/trash/:id` | Delete one trashed artifact for good |
-| PUT | `/artifacts/:id/content` | New version (multipart `file`) |
+| PUT | `/artifacts/:id/content` | New version (multipart `file`, optional `message`) |
 | POST | `/artifacts/:id/revoke-all` | Bump the access epoch |
 | POST | `/artifacts/:id/share` | Switch to link visibility and create a link in one call (`hours`, `label`) |
 | POST, DELETE | `/artifacts/:id/links[/:linkId]` | Create (`label`, `expiresAt`) or revoke a share link |
 | GET | `/artifacts/:id/preview` | Signed admin preview URL (1 h) |
 | GET | `/artifacts/:id/stats?days=N` | Views, uniques, daily series, link opens |
-| GET | `/artifacts/:id/versions` | Versions, newest first |
+| GET | `/artifacts/:id/versions` | Versions, newest first, with their note |
+| PATCH | `/artifacts/:id/versions/:versionId` | Write, correct or clear (`message`: null or blank) a version's note |
 | GET | `/artifacts/:id/versions/:versionId/preview` | Pinned preview URL of any kept version |
 | POST | `/artifacts/:id/versions/:versionId/restore` | Make a version current |
 | GET | `/artifacts/:id/thumbnail`, `/artifacts/:id/versions/:versionId/thumbnail` | Thumbnails (private cache, ETag) |

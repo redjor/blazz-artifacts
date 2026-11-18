@@ -202,6 +202,8 @@ function migrateVersions(db: Db): void {
     const cols = db.prepare('PRAGMA table_info(versions)').all() as { name: string }[];
     if (!cols.some((c) => c.name === 'kind')) db.exec('ALTER TABLE versions ADD COLUMN kind TEXT');
     if (!cols.some((c) => c.name === 'number')) db.exec('ALTER TABLE versions ADD COLUMN number INTEGER');
+    // Version note (design 16): what changed, one line, optional.
+    if (!cols.some((c) => c.name === 'message')) db.exec('ALTER TABLE versions ADD COLUMN message TEXT');
     // Kind taken from the version itself (the artifact's kind may have changed between versions), else the artifact's.
     db.exec(`UPDATE versions SET kind = CASE
       WHEN entry_path = 'document.pdf' THEN 'pdf'

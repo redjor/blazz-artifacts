@@ -19,3 +19,4 @@ the decisions and their reasons.
 - [13 — One “Share” entry point](13-share-popover.md): a Share popover in the artifact panel, visibility applied at once with an undo, link artifacts nobody can open flagged.
 - [14 — Live preview and quick look](14-live-preview-and-quick-look.md): the artifact live in its panel, a full-window quick look with Space and arrows.
 - [15 — Paste to publish, drop a new version](15-paste-and-drop-version.md): Ctrl/⌘+V publishes copied HTML, JSON or Markdown; a file dropped on a card becomes its next version.
+- [16 — Version notes and comparison](16-version-notes-and-compare.md): one line per version on what changed, two versions side by side.

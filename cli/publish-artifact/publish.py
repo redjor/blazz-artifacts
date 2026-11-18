@@ -312,6 +312,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument('--no-thumbnail', dest='no_thumbnail', action='store_true', help='Do not capture a thumbnail after the upload')
     p.add_argument('--stats', action='store_true', help='Show the artifact visits (path or --slug): totals, last 7 days, opens per link, and exit')
     p.add_argument('--slug')
+    p.add_argument('-m', '--message', help='Version note: what changed in this version (200 characters max)')
     p.add_argument('--title')
     p.add_argument('--visibility', choices=VISIBILITIES)
     p.add_argument('--code')
@@ -332,13 +333,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         p.error(f"{' and '.join(modes)} are mutually exclusive: one mode at a time")
     if args.description is not None and len(args.description.strip()) > 1000:
         p.error('--description: 1000 characters max')
+    if args.message is not None and len(' '.join(args.message.split())) > 200:
+        p.error('--message: 200 characters max')
     if args.share_folder is not None or args.folder_stats is not None or args.create_folder is not None:
         # Folder: only these options apply (no path, no artifact option).
         allowed = ({'--visibility', '--code', '--link-hours', '--link-label', '--title'} if args.share_folder is not None
                    else {'--title', '--description'} if args.create_folder is not None else set())
         given = [flag for flag, on in (
             ('--visibility', args.visibility is not None), ('--title', args.title is not None), ('--description', args.description is not None),
-            ('--code', args.code is not None),
+            ('--code', args.code is not None), ('--message', args.message is not None),
             ('--project', args.project is not None), ('--tag', bool(args.tag)), ('--rename-slug', args.rename_slug is not None),
             ('--link-hours', args.link_hours is not None), ('--link-label', args.link_label is not None), ('--slug', args.slug is not None),
             ('--memory-storage/--no-memory-storage', args.memory_storage is not None), ('--include-dotfiles', args.include_dotfiles),
@@ -361,7 +364,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     if args.list_versions or args.restore is not None or args.stats or args.thumbnail_only:
         upload_only = [flag for flag, given in (
             ('--visibility', args.visibility is not None), ('--title', args.title is not None), ('--code', args.code is not None),
-            ('--description', args.description is not None),
+            ('--description', args.description is not None), ('--message', args.message is not None),
             ('--project', args.project is not None), ('--tag', bool(args.tag)), ('--rename-slug', args.rename_slug is not None),
             ('--link-hours', args.link_hours is not None), ('--link-label', args.link_label is not None),
             ('--memory-storage/--no-memory-storage', args.memory_storage is not None), ('--include-dotfiles', args.include_dotfiles),
@@ -553,7 +556,8 @@ def list_versions(args: argparse.Namespace) -> int:
     base, token = hub_url(), api_token()
     art = find_existing(token, base, slug)
     for v in fetch_versions(token, base, art):
-        print('\t'.join([f"v{v['number']}", v['createdAt'], v['kind'], v['originalName'], str(v['sizeBytes']), '* current' if v.get('current') else '']).rstrip())
+        print('\t'.join([f"v{v['number']}", v['createdAt'], v['kind'], v['originalName'], str(v['sizeBytes']), '* current' if v.get('current') else '',
+                         v.get('message') or '']).rstrip())
     return 0
 
 
@@ -787,6 +791,7 @@ def run(args: argparse.Namespace) -> int:
     tags = parse_tags(args.tag) if args.tag else None
     rename = validate_slug(args.rename_slug) if args.rename_slug is not None else None
     description_arg = args.description.strip() if args.description is not None else None
+    message = ' '.join(args.message.split()) if args.message is not None else ''
     if rename == slug:
         raise UsageError(f'--rename-slug is the same as the current slug ({slug}).')
     tmp: list[Path] = []
@@ -802,7 +807,7 @@ def run(args: argparse.Namespace) -> int:
             print('[dry-run] if absent: POST /api/artifacts', json.dumps({
                 'file': filename, 'title': title, 'slug': slug, 'visibility': args.visibility or 'private',
                 'code': '***' if args.code else None, 'memoryStorage': bool(args.memory_storage),
-                'project': project, 'tags': tags or [], 'description': description_arg}, ensure_ascii=False))
+                'project': project, 'tags': tags or [], 'description': description_arg, 'message': message or None}, ensure_ascii=False))
             update_patch = {k: v for k, v in {'title': args.title, 'description': description_arg, 'visibility': args.visibility,
                                               'code': '***' if args.code else None,
                                               'memoryStorage': args.memory_storage, 'tags': tags}.items() if v is not None}
@@ -841,7 +846,7 @@ def run(args: argparse.Namespace) -> int:
 
         print(description)
         if existing:
-            art = call(token, 'PUT', f"{base}/api/artifacts/{existing['id']}/content", file=(upload, filename))
+            art = call(token, 'PUT', f"{base}/api/artifacts/{existing['id']}/content", fields={'message': message} if message else None, file=(upload, filename))
             patch = {k: v for k, v in {'title': args.title, 'description': description_arg, 'visibility': args.visibility, 'code': args.code,
                                         'memoryStorage': args.memory_storage, 'tags': tags}.items() if v is not None}
             if args.project is not None:
@@ -867,6 +872,8 @@ def run(args: argparse.Namespace) -> int:
                 fields['code'] = args.code
             if description_arg:
                 fields['description'] = description_arg
+            if message:
+                fields['message'] = message
             if args.memory_storage:
                 fields['memoryStorage'] = 'true'
             art = call(token, 'POST', f'{base}/api/artifacts', fields=fields, file=(upload, filename))
@@ -889,6 +896,8 @@ def run(args: argparse.Namespace) -> int:
         print(f"visibility: {art['visibility']}")
         if art.get('version'):
             print(f"version: v{art['version']['number']}")
+            if art['version'].get('message'):
+                print(f"note: {art['version']['message']}")
         print(f"memory-storage: {'on' if art.get('memoryStorage') else 'off'}")
         print(f"project: {art.get('project') or '-'}")
         print(f"tags: {', '.join(art.get('tags') or []) or '-'}")

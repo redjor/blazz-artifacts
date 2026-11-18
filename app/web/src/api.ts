@@ -83,6 +83,9 @@ export const api = {
   versionPreview: (id: string, versionId: string) => request<{ url: string }>('GET', `/artifacts/${seg(id)}/versions/${seg(versionId)}/preview`),
   putThumbnail: (id: string, versionId: string, image: Blob) =>
     request<{ thumbnailUrl: string }>('PUT', `/artifacts/${seg(id)}/versions/${seg(versionId)}/thumbnail`, image),
+  /** Writes, corrects or clears (null) a version's note (design 16). */
+  versionNote: (id: string, versionId: string, message: string | null) =>
+    request<VersionDto>('PATCH', `/artifacts/${seg(id)}/versions/${seg(versionId)}`, { message }),
   restore: (id: string, versionId: string) => request<ArtifactDto>('POST', `/artifacts/${seg(id)}/versions/${seg(versionId)}/restore`),
   createFolder: (body: { name: string; title?: string; description?: string; parent?: string | null }) => request<FolderDetail>('POST', '/projects', body),
   folder: (name: string) => request<FolderDetail>('GET', `/projects/${seg(name)}`),

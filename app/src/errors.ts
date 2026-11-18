@@ -22,6 +22,8 @@ export const ERRORS = {
   folder_title_too_long: 'Title: {max} characters max',
   invalid_description: 'Invalid description',
   description_too_long: 'Description: {max} characters max',
+  invalid_version_message: 'Invalid version note',
+  version_message_too_long: 'Version note: {max} characters max',
   expiry_in_past: 'The expiry date must be in the future',
   invalid_tags_type: 'Invalid tags: a list of strings is expected',
   invalid_tags: 'Invalid tags: letters, digits and hyphens (32 characters max), 20 tags at most',

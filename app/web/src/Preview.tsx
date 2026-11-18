@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api, openPreview } from './api.ts';
-import { kindLabel, visibilityLabel } from './format.ts';
+import { formatDate, kindLabel, visibilityLabel } from './format.ts';
 import { t } from './i18n/index.ts';
 import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, EyeIcon, OpenIcon, SlidersIcon, VISIBILITY_ICON } from './icons.tsx';
 import { isEditable, useLayer } from './layers.ts';
-import type { ArtifactDto } from './types.ts';
+import type { ArtifactDto, VersionDto } from './types.ts';
 
 // Live preview in the artifact panel and quick look (design 14). The artifact is framed on a signed admin preview
 // path of the content origin (the admin CSP allows that origin in frame-src, the content server lets the admin origin
@@ -143,6 +143,93 @@ export function QuickLook({ id, order, items, onNavigate, onClose, onManage, onE
           {url === 'failed' ? <p className="text-sm text-muted">{t('preview.failed')}</p>
             : !url ? <p className="text-sm text-muted">{t('common.loading')}</p>
               : <iframe key={url} src={url} title={t('preview.frameTitle', { title: a.title })} sandbox={sandboxFor(a)} className={`block border-0 bg-white ${SCREEN_CLASS[shownScreen]}`} />}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** Pinned preview address of one kept version (valid an hour); null while loading, 'failed' on error. */
+function useVersionUrl(artifactId: string, versionId: string): string | null | 'failed' {
+  const [state, setState] = useState<{ key: string; url: string | null | 'failed' }>({ key: '', url: null });
+  const key = `${artifactId}/${versionId}`;
+  useEffect(() => {
+    let live = true;
+    api.versionPreview(artifactId, versionId).then((r) => live && setState({ key, url: r.url }), () => live && setState({ key, url: 'failed' }));
+    return () => {
+      live = false;
+    };
+  }, [artifactId, versionId, key]);
+  return state.key === key ? state.url : null;
+}
+
+function ComparePane({ a, v, versions, screen, onPick, side }: {
+  a: ArtifactDto; v: VersionDto; versions: VersionDto[]; screen: Screen; onPick: (versionId: string) => void; side: 'left' | 'right';
+}) {
+  const url = useVersionUrl(a.id, v.id);
+  const pickId = useId();
+  return (
+    <section className="flex min-h-0 min-w-0 flex-col" aria-label={t(side === 'left' ? 'compare.left' : 'compare.right')}>
+      <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-3 py-2 text-sm">
+        <label className="sr-only" htmlFor={pickId}>{t(side === 'left' ? 'compare.left' : 'compare.right')}</label>
+        <select id={pickId} value={v.id} onChange={(e) => onPick(e.target.value)}
+          className="rounded-md border border-line bg-surface px-2 py-1 text-sm font-medium tabular-nums hover:border-line-strong">
+          {versions.map((x) => <option key={x.id} value={x.id}>{`v${x.number}${x.current ? ` · ${t('history.current')}` : ''}`}</option>)}
+        </select>
+        <span className="text-xs text-muted">{formatDate(v.createdAt)}</span>
+        {v.message && <span className="min-w-0 flex-1 truncate text-xs" title={v.message}>{v.message}</span>}
+      </div>
+      <div className={`grid min-h-0 flex-1 place-items-center overflow-auto ${screen === 'desktop' ? '' : 'bg-surface-2 p-3'}`}>
+        {url === 'failed' ? <p className="text-sm text-muted">{t('preview.failed')}</p>
+          : !url ? <p className="text-sm text-muted">{t('common.loading')}</p>
+            : <iframe key={url} src={url} title={t('compare.frameTitle', { n: v.number })} sandbox={sandboxFor(a)} className={`block border-0 bg-white ${SCREEN_CLASS[screen]}`} />}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Two kept versions side by side (design 16), stacked on narrow screens. Each side picks its version; screen sizes for
+ * HTML pages and sites. The frames cannot scroll together: each is a sandboxed page of its own.
+ */
+export function VersionCompare({ a, versions, left: initialLeft, right: initialRight, onClose }: {
+  a: ArtifactDto; versions: VersionDto[]; left: string; right: string; onClose: () => void;
+}) {
+  const layer = useRef<HTMLDivElement>(null);
+  const [left, setLeft] = useState(initialLeft);
+  const [right, setRight] = useState(initialRight);
+  const [screen, setScreen] = useState<Screen>('desktop');
+  useLayer({ el: layer, modal: true, onEscape: onClose });
+  const l = versions.find((v) => v.id === left) ?? versions[versions.length - 1];
+  const r = versions.find((v) => v.id === right) ?? versions[0];
+  const shown = sized(a) ? screen : 'desktop';
+  const btn = 'tip grid size-9 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-ink';
+  return createPortal(
+    <div ref={layer} className="fixed inset-0 z-50">
+      <div aria-hidden="true" className="drawer-scrim absolute inset-0 bg-[var(--scrim)]" onClick={onClose} />
+      <div role="dialog" aria-modal="true" aria-label={t('compare.title', { title: a.title })}
+        className="enter-pop absolute inset-0 flex flex-col overflow-hidden bg-surface sm:inset-4 sm:rounded-2xl sm:shadow-[0_24px_60px_-20px_oklch(0.2_0.02_70/0.45),0_0_0_1px_var(--line)]">
+        <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-3 py-2 sm:px-4">
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-[15px] font-medium">{t('compare.title', { title: a.title })}</h2>
+            <p className="text-xs text-muted">{t('compare.hint')}</p>
+          </div>
+          {sized(a) && (
+            <div role="radiogroup" aria-label={t('preview.screen')} className="hidden items-center gap-0.5 rounded-full bg-surface-2 p-0.5 md:flex">
+              {SCREENS.map((s) => (
+                <button key={s} type="button" role="radio" aria-checked={screen === s} onClick={() => setScreen(s)}
+                  className={`rounded-full px-3 py-1 text-xs ${screen === s ? 'bg-surface font-medium text-ink shadow-sm' : 'text-muted hover:text-ink'}`}>
+                  {t(`preview.screen.${s}`)}
+                </button>
+              ))}
+            </div>
+          )}
+          <button type="button" className={`${btn} tip-end`} onClick={onClose} aria-label={t('common.close')} data-tip={t('common.closeTip')} data-autofocus><CloseIcon /></button>
+        </header>
+        <div className="grid min-h-0 flex-1 grid-rows-2 divide-y divide-line md:grid-cols-2 md:grid-rows-1 md:divide-x md:divide-y-0">
+          <ComparePane a={a} v={l} versions={versions} screen={shown} onPick={setLeft} side="left" />
+          <ComparePane a={a} v={r} versions={versions} screen={shown} onPick={setRight} side="right" />
         </div>
       </div>
     </div>,
