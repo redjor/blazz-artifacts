@@ -71,7 +71,7 @@ export function extractText(dataDir: string, artifactId: string, kind: Kind, ver
   return text.slice(0, MAX_TEXT_CHARS);
 }
 
-const fields = (db: Db, art: Artifact) => ({ title: art.title, slug: art.slug, tags: getTags(db, art.id).join(' ') });
+const fields = (db: Db, art: Artifact) => ({ title: art.title, slug: art.slug, tags: getTags(db, art.id).join(' '), description: art.description ?? '' });
 
 /** (Re)indexes an artifact entirely, text of its current version included: publish, new or restored version. */
 export function indexArtifact(db: Db, dataDir: string, art: Artifact): void {
@@ -79,13 +79,13 @@ export function indexArtifact(db: Db, dataDir: string, art: Artifact): void {
   const body = v ? extractText(dataDir, art.id, v.kind ?? art.kind, v) : '';
   const f = fields(db, art);
   db.prepare('DELETE FROM search_index WHERE artifact_id = ?').run(art.id);
-  db.prepare('INSERT INTO search_index (artifact_id, title, slug, tags, body) VALUES (?, ?, ?, ?, ?)').run(art.id, f.title, f.slug, f.tags, body);
+  db.prepare('INSERT INTO search_index (artifact_id, title, slug, tags, body, description) VALUES (?, ?, ?, ?, ?, ?)').run(art.id, f.title, f.slug, f.tags, body, f.description);
 }
 
-/** Title, slug and tags only (the text is unchanged); indexes everything if the artifact has no row yet. */
+/** Title, slug, tags and description only (the text is unchanged); indexes everything if the artifact has no row yet. */
 export function indexFields(db: Db, dataDir: string, art: Artifact): void {
   const f = fields(db, art);
-  const res = db.prepare('UPDATE search_index SET title = ?, slug = ?, tags = ? WHERE artifact_id = ?').run(f.title, f.slug, f.tags, art.id);
+  const res = db.prepare('UPDATE search_index SET title = ?, slug = ?, tags = ?, description = ? WHERE artifact_id = ?').run(f.title, f.slug, f.tags, f.description, art.id);
   if (Number(res.changes) === 0) indexArtifact(db, dataDir, art);
 }
 
@@ -134,7 +134,7 @@ function toParts(marked: string | null): SnippetPart[] | null {
   return parts;
 }
 
-/** Live artifacts matching `input` in title, slug, tags or text, best first; the snippet comes from the text. */
+/** Live artifacts matching `input` in title, slug, tags, text or description, best first; the snippet comes from the text. */
 export function searchArtifacts(db: Db, input: string, limit = MAX_RESULTS): SearchResult[] {
   const match = ftsQuery(input);
   if (!match) return [];
@@ -142,7 +142,7 @@ export function searchArtifacts(db: Db, input: string, limit = MAX_RESULTS): Sea
     SELECT search_index.artifact_id AS id, snippet(search_index, 4, '${OPEN}', '${CLOSE}', '…', 12) AS marked
     FROM search_index JOIN live_artifacts a ON a.id = search_index.artifact_id
     WHERE search_index MATCH ?
-    ORDER BY bm25(search_index, 0, 8, 4, 4, 1)
+    ORDER BY bm25(search_index, 0, 8, 4, 4, 1, 2)
     LIMIT ?`).all(match, limit) as { id: string; marked: string | null }[];
   return rows.map((r) => ({ id: r.id, snippet: toParts(r.marked) }));
 }

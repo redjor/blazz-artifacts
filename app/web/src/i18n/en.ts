@@ -411,6 +411,7 @@ export const en = {
   'folder.private.other': ', including {n} private',
   'folder.pageTitle': 'Page title',
   'folder.descriptionHint': '(optional, shown under the title)',
+  'artifact.descriptionHint': '(optional: folder pages, link previews and search)',
   'folder.name': 'Folder name',
   'folder.invalidName': 'Invalid name: letters, digits and hyphens, 32 characters max.',
   'folder.renameWarn': 'Renames the folder of its {n} artifacts. The old address /d/{name} will stop working.',

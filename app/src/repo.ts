@@ -7,6 +7,8 @@ export const VISIBILITIES: readonly Visibility[] = ['private', 'code', 'link', '
 
 export interface Artifact {
   id: string; slug: string; title: string; kind: Kind; visibility: Visibility;
+  /** Optional plain text under the title (design 12). */
+  description: string | null;
   code_hash: string | null; access_epoch: number; current_version_id: string | null;
   created_at: string; updated_at: string; memory_storage: number;
   project: string | null; pinned_at: string | null;
@@ -29,7 +31,7 @@ export interface ShareLink {
 }
 export interface Session { id_hash: string; csrf_token: string; expires_at: string; created_at: string }
 
-export type NewArtifact = Pick<Artifact, 'id' | 'slug' | 'title' | 'kind' | 'visibility' | 'code_hash'> & { memory_storage?: number; project?: string | null; tags?: string[] };
+export type NewArtifact = Pick<Artifact, 'id' | 'slug' | 'title' | 'kind' | 'visibility' | 'code_hash'> & { memory_storage?: number; project?: string | null; tags?: string[]; description?: string | null };
 export type NewVersion = Pick<Version, 'id' | 'entry_path' | 'original_name' | 'size_bytes' | 'file_count'>;
 
 const nowIso = () => new Date().toISOString();
@@ -107,8 +109,8 @@ export function insertArtifactWithVersion(db: Db, a: NewArtifact, v: NewVersion)
   const at = nowIso();
   tx(db, () => {
     db.prepare(
-      'INSERT INTO artifacts (id, slug, title, kind, visibility, code_hash, memory_storage, project, current_version_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)',
-    ).run(a.id, a.slug, a.title, a.kind, a.visibility, a.code_hash, a.memory_storage ?? 0, a.project ?? null, at, at);
+      'INSERT INTO artifacts (id, slug, title, description, kind, visibility, code_hash, memory_storage, project, current_version_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)',
+    ).run(a.id, a.slug, a.title, a.description ?? null, a.kind, a.visibility, a.code_hash, a.memory_storage ?? 0, a.project ?? null, at, at);
     setTags(db, a.id, a.tags ?? []);
     insertVersion(db, a.id, v, a.kind, at);
     db.prepare('UPDATE artifacts SET current_version_id = ? WHERE id = ?').run(v.id, a.id);
@@ -252,8 +254,8 @@ export function listFolders(db: Db): FolderSummary[] {
   return Number(none.n) > 0 ? [...named, { name: null, count: Number(none.n), privateCount: Number(none.p), visibility: 'private', title: null, parent: null, position: null }] : named;
 }
 
-export type ArtifactPatch = Partial<Pick<Artifact, 'title' | 'slug' | 'visibility' | 'code_hash' | 'memory_storage' | 'project'>>;
-const PATCHABLE = ['title', 'slug', 'visibility', 'code_hash', 'memory_storage', 'project'] as const;
+export type ArtifactPatch = Partial<Pick<Artifact, 'title' | 'slug' | 'description' | 'visibility' | 'code_hash' | 'memory_storage' | 'project'>>;
+const PATCHABLE = ['title', 'slug', 'description', 'visibility', 'code_hash', 'memory_storage', 'project'] as const;
 
 export function updateArtifact(db: Db, id: string, patch: ArtifactPatch, bump: boolean): Artifact {
   const sets: string[] = ['updated_at = ?'];

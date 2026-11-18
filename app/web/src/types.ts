@@ -18,6 +18,8 @@ export type BulkOp = 'move' | 'addTags' | 'removeTags' | 'visibility' | 'pin' | 
 
 export interface ArtifactDto {
   id: string; slug: string; title: string; kind: Kind; visibility: Visibility; hasCode: boolean; memoryStorage: boolean; project: string | null; tags: string[];
+  /** Optional text under the title (design 12). */
+  description: string | null;
   createdAt: string; updatedAt: string; url: string;
   /** Most recent active share link (“link” visibility only). */
   activeLinkUrl: string | null;

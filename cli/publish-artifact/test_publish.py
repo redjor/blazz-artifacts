@@ -363,6 +363,24 @@ class ProjectTagsFlowTest(unittest.TestCase):
         self.assertIn('\\"tags\\": [\\"z\\"]', calls[2])
         self.assertNotIn('project', calls[2].split('request')[1])
 
+    def test_description_on_create_and_update(self):
+        art = '{"id":"1","slug":"a","title":"t","visibility":"private","url":"u","project":null,"tags":[],"description":"Écran d’accueil"}'
+        code, calls, out, _ = self.run_main(['--description', '  Écran d’accueil  '], ['[]', art])
+        self.assertEqual(code, 0)
+        self.assertIn('form-string = "description=Écran d’accueil"', calls[1])
+        self.assertIn('description: Écran d’accueil', out)
+        existing = '[{"id":"1","slug":"a","visibility":"private","hasCode":false}]'
+        _, calls, _, _ = self.run_main(['--description', ''], [existing, self.ART % 'a', self.ART % 'a'])
+        self.assertIn('\\"description\\": \\"\\"', calls[2], 'empty clears on update')
+        _, calls, _, _ = self.run_main([], [existing, self.ART % 'a'])
+        self.assertEqual(len(calls), 2, 'no PATCH without an option to change')
+
+    def test_description_too_long_or_out_of_place(self):
+        for argv in (['--description', 'x' * 1001], ['--description', 'x', '--stats'], ['--description', 'x', '--list-versions']):
+            with mock.patch('sys.stderr', io.StringIO()), self.assertRaises(SystemExit) as cm:
+                self.run_main(argv, [])
+            self.assertEqual(cm.exception.code, 2, argv)
+
     def test_invalid_labels_exit_2_before_network(self):
         for argv in (['--project', '???'], ['--tag', '!!!']):
             code, calls, _, _ = self.run_main(argv, [])
@@ -753,7 +771,7 @@ class CreateFolderTest(unittest.TestCase):
     def test_create_folder_bad_combinations(self):
         for argv in (['--create-folder', '!!!'], ['--create-folder', 'a', '--visibility', 'public'], ['--create-folder', 'a', 'fichier.md'],
                      ['--create-folder', 'a', '--share-folder', 'a'], ['--create-folder', 'a', '--tag', 't'], ['--create-folder', 'a', '--list-projects'],
-                     ['--create-folder', 'a', '--code', 'sesame-long'], ['--description', 'x', 'fichier.md'], ['--create-folder', 'a', '--description', 'x' * 1001],
+                     ['--create-folder', 'a', '--code', 'sesame-long'], ['--share-folder', 'a', '--description', 'x'], ['--create-folder', 'a', '--description', 'x' * 1001],
                      ['--create-folder', 'a', '--title', 'x' * 121]):
             calls = []
             with mock.patch.dict(os.environ, self.ENV), mock.patch('subprocess.run', lambda a, **kw: calls.append(1)), \

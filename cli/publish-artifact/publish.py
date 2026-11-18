@@ -302,7 +302,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help='Share a folder (7-day link by default, or --visibility public|code|private) and exit')
     p.add_argument('--create-folder', dest='create_folder', metavar='NAME',
                    help='Create an empty private folder (optional --title, --description) and exit')
-    p.add_argument('--description', help='Folder description (--create-folder only)')
+    p.add_argument('--description', help='Description shown under the title (artifact, or folder with --create-folder); empty clears on update')
     p.add_argument('--folder-stats', dest='folder_stats', metavar='FOLDER',
                    help='Show folder page visits: totals, last 7 days, opens per link, and exit')
     p.add_argument('--list-versions', dest='list_versions', action='store_true', help='List the artifact versions (path or --slug) and exit')
@@ -330,8 +330,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                                    ('--create-folder', args.create_folder is not None)) if on]
     if len(modes) > 1:
         p.error(f"{' and '.join(modes)} are mutually exclusive: one mode at a time")
-    if args.description is not None and args.create_folder is None:
-        p.error('--description only applies to --create-folder')
+    if args.description is not None and len(args.description.strip()) > 1000:
+        p.error('--description: 1000 characters max')
     if args.share_folder is not None or args.folder_stats is not None or args.create_folder is not None:
         # Folder: only these options apply (no path, no artifact option).
         allowed = ({'--visibility', '--code', '--link-hours', '--link-label', '--title'} if args.share_folder is not None
@@ -355,14 +355,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         if args.create_folder is not None:
             if args.title is not None and len(args.title.strip()) > 120:
                 p.error('--title: 120 characters max')
-            if args.description is not None and len(args.description.strip()) > 1000:
-                p.error('--description: 1000 characters max')
         name = next(n for n in (args.share_folder, args.folder_stats, args.create_folder) if n is not None)
         if normalize_label(name) is None:
             p.error(f'Invalid folder: {name!r}. Letters, digits and hyphens ({MAX_LABEL} characters max).')
     if args.list_versions or args.restore is not None or args.stats or args.thumbnail_only:
         upload_only = [flag for flag, given in (
             ('--visibility', args.visibility is not None), ('--title', args.title is not None), ('--code', args.code is not None),
+            ('--description', args.description is not None),
             ('--project', args.project is not None), ('--tag', bool(args.tag)), ('--rename-slug', args.rename_slug is not None),
             ('--link-hours', args.link_hours is not None), ('--link-label', args.link_label is not None),
             ('--memory-storage/--no-memory-storage', args.memory_storage is not None), ('--include-dotfiles', args.include_dotfiles),
@@ -787,6 +786,7 @@ def run(args: argparse.Namespace) -> int:
     project = parse_project(args.project) if args.project is not None else None  # None with args.project given = clear
     tags = parse_tags(args.tag) if args.tag else None
     rename = validate_slug(args.rename_slug) if args.rename_slug is not None else None
+    description_arg = args.description.strip() if args.description is not None else None
     if rename == slug:
         raise UsageError(f'--rename-slug is the same as the current slug ({slug}).')
     tmp: list[Path] = []
@@ -802,8 +802,9 @@ def run(args: argparse.Namespace) -> int:
             print('[dry-run] if absent: POST /api/artifacts', json.dumps({
                 'file': filename, 'title': title, 'slug': slug, 'visibility': args.visibility or 'private',
                 'code': '***' if args.code else None, 'memoryStorage': bool(args.memory_storage),
-                'project': project, 'tags': tags or []}, ensure_ascii=False))
-            update_patch = {k: v for k, v in {'title': args.title, 'visibility': args.visibility, 'code': '***' if args.code else None,
+                'project': project, 'tags': tags or [], 'description': description_arg}, ensure_ascii=False))
+            update_patch = {k: v for k, v in {'title': args.title, 'description': description_arg, 'visibility': args.visibility,
+                                              'code': '***' if args.code else None,
                                               'memoryStorage': args.memory_storage, 'tags': tags}.items() if v is not None}
             if args.project is not None:
                 update_patch['project'] = project
@@ -841,7 +842,7 @@ def run(args: argparse.Namespace) -> int:
         print(description)
         if existing:
             art = call(token, 'PUT', f"{base}/api/artifacts/{existing['id']}/content", file=(upload, filename))
-            patch = {k: v for k, v in {'title': args.title, 'visibility': args.visibility, 'code': args.code,
+            patch = {k: v for k, v in {'title': args.title, 'description': description_arg, 'visibility': args.visibility, 'code': args.code,
                                         'memoryStorage': args.memory_storage, 'tags': tags}.items() if v is not None}
             if args.project is not None:
                 patch['project'] = project
@@ -864,6 +865,8 @@ def run(args: argparse.Namespace) -> int:
                 fields['tags'] = ','.join(tags)
             if args.code:
                 fields['code'] = args.code
+            if description_arg:
+                fields['description'] = description_arg
             if args.memory_storage:
                 fields['memoryStorage'] = 'true'
             art = call(token, 'POST', f'{base}/api/artifacts', fields=fields, file=(upload, filename))
@@ -880,6 +883,8 @@ def run(args: argparse.Namespace) -> int:
                 link_error = e
 
         print(f"{action}: {art['title']}")
+        if art.get('description'):
+            print(f"description: {art['description']}")
         print(f"slug: {art['slug']}")
         print(f"visibility: {art['visibility']}")
         if art.get('version'):

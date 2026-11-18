@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Artifact description: an optional text under the title, set in the artifact panel or with `--description` in the
+  CLI; shown on folder pages under the card title, used by link previews instead of the excerpt, and found by the
+  gallery search. The search index is rebuilt once at startup to gain the new column.
 - Visitor bar: HTML pages and ZIP sites can be viewed at Desktop, Tablet (820 × 1180) or Mobile (390 × 844) size
   (`?w=tablet`, `?w=mobile`), the artifact centred at that size; artifacts opened from a folder get previous / next
   links and their position (`2 / 5`), keeping the chosen size. Still no script on the page.

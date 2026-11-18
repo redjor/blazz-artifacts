@@ -15,3 +15,4 @@ the decisions and their reasons.
 - [09 — Sub-folder order](09-sub-folder-order.md): order sub-folders in the folder panel, like its artifacts.
 - [10 — Artifact bar](10-artifact-bar.md): a top bar above every artifact for visitors, through a script-free frame page.
 - [11 — Screen sizes and folder steps](11-screen-sizes-and-steps.md): Desktop, Tablet and Mobile sizes in the visitor bar, previous / next through a folder.
+- [12 — Artifact description](12-artifact-description.md): an optional text under the title, on folder pages, link previews and in search.

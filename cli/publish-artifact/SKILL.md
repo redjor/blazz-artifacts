@@ -25,6 +25,7 @@ python3 <skill-folder>/publish.py <file-or-folder> [options]
 |---|---|
 | `--slug S` | URL `/a/S` (default: file or folder name). An existing slug updates that artifact. |
 | `--title T` | Displayed title |
+| `--description D` | One or two sentences shown under the title (folder pages, link previews, gallery search), 1000 characters max; `--description ''` clears it on update |
 | `--visibility private\|code\|link\|public` | Default `private` on creation; unchanged otherwise |
 | `--code CODE` | Access code (6 characters min.), for `--visibility code` |
 | `--link-hours N` | With `link` visibility: creates a share link valid N hours |

@@ -74,6 +74,7 @@ export function openDb(file: string): Db {
   migrateVisits(db);
   migrateThumbs(db);
   migrateFolders(db);
+  migrateDescriptions(db);
   migrateTrash(db);
   migrateSearch(db);
   return db;
@@ -92,11 +93,21 @@ function migrateTrash(db: Db): void {
 }
 
 // Full-text search (design 07): one row per artifact, trashed ones included (results join live_artifacts). Filled by
-// the API (src/search.ts) and, for artifacts without a row, at startup.
+// the API (src/search.ts) and, for artifacts without a row, at startup. An FTS5 table cannot gain a column: an index
+// from before descriptions (design 12) is dropped and rebuilt empty, then filled again at startup (indexMissing).
 function migrateSearch(db: Db): void {
+  const cols = db.prepare('PRAGMA table_info(search_index)').all() as { name: string }[];
+  if (cols.length && !cols.some((c) => c.name === 'description')) db.exec('DROP TABLE search_index');
   db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
-    artifact_id UNINDEXED, title, slug, tags, body, tokenize = 'unicode61 remove_diacritics 2'
+    artifact_id UNINDEXED, title, slug, tags, body, description, tokenize = 'unicode61 remove_diacritics 2'
   )`);
+}
+
+// Artifact description (design 12): optional plain text shown under the title. Before migrateTrash, like every
+// column of artifacts read through live_artifacts.
+function migrateDescriptions(db: Db): void {
+  const cols = db.prepare('PRAGMA table_info(artifacts)').all() as { name: string }[];
+  if (!cols.some((c) => c.name === 'description')) db.exec('ALTER TABLE artifacts ADD COLUMN description TEXT');
 }
 
 // Shareable folders: one sheet per project, order in the folder, folder share links, folder visits.

@@ -69,13 +69,13 @@ data/
   tmp/  backup/
 ```
 
-Main tables: `artifacts` (slug, title, kind, visibility, code hash, access epoch, current version, folder, pin,
+Main tables: `artifacts` (slug, title, description, kind, visibility, code hash, access epoch, current version, folder, pin,
 folder position, `deleted_at` for the trash; every read goes through the `live_artifacts` view, which leaves trashed
 rows out), `versions` (number, kind, entry path, size, thumbnail), `artifact_tags`, `projects` (folder sheets:
 title, description, visibility, code hash, epoch, salt, `parent_name` (FK, ON UPDATE CASCADE), `position`),
 `share_links` (artifact **or** folder target, token hash +
 encrypted token, expiry, revocation, open count), `visit_days` / `folder_visit_days` (daily aggregates),
-`visit_seen` (fingerprints, two days max), `admin_sessions`, `search_index` (FTS5: title, slug, tags and text of the
+`visit_seen` (fingerprints, two days max), `admin_sessions`, `search_index` (FTS5: title, slug, tags, description and text of the
 current version, one row per artifact, kept up to date by the API, `src/search.ts`). Migrations run in place at startup, idempotent, in one
 transaction (`src/db.ts`).
 
@@ -99,8 +99,8 @@ message>", "params"?: {…} }`; codes are listed in `app/src/errors.ts`.
 | GET | `/session` | Session state and CSRF token |
 | POST | `/login`, `/logout` | Session (not available with the API token) |
 | GET | `/artifacts` | List; `?slug=` exact match, `?project=`, `?tag=` (repeatable) |
-| POST | `/artifacts` | Create (multipart: `file`, `title`, `slug`, `visibility`, `code`, `memoryStorage`, `project`, `tags`) |
-| GET, PATCH, DELETE | `/artifacts/:id` | Detail with links; update title, slug, visibility, code, memoryStorage, project, tags, pinned; delete (to the trash, or for good with `TRASH_DAYS=0`) |
+| POST | `/artifacts` | Create (multipart: `file`, `title`, `description`, `slug`, `visibility`, `code`, `memoryStorage`, `project`, `tags`) |
+| GET, PATCH, DELETE | `/artifacts/:id` | Detail with links; update title, description, slug, visibility, code, memoryStorage, project, tags, pinned; delete (to the trash, or for good with `TRASH_DAYS=0`) |
 | POST | `/artifacts/bulk` | One operation on 1 to 500 artifacts in one transaction, all or nothing (`ids`, `op`: `move`, `addTags`, `removeTags`, `visibility` without `code`, `pin`, `unpin`, `trash`, `restore`; `value`) |
 | POST | `/artifacts/:id/restore` | Bring a trashed artifact back (without a folder if its folder was deleted meanwhile) |
 | GET, DELETE | `/trash` | Trashed artifacts with their purge date; empty the trash |

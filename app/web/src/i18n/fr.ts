@@ -412,6 +412,7 @@ export const fr: Messages = {
   'folder.private.other': ', dont {n} privés',
   'folder.pageTitle': 'Titre de la page',
   'folder.descriptionHint': '(facultative, affichée sous le titre)',
+  'artifact.descriptionHint': '(facultative : pages de dossier, aperçus de lien et recherche)',
   'folder.name': 'Nom du dossier',
   'folder.invalidName': 'Nom invalide : lettres, chiffres et tirets, 32 caractères max.',
   'folder.renameWarn': 'Renomme le dossier de ses {n} artéfacts. L’ancienne adresse /d/{name} cessera de fonctionner.',

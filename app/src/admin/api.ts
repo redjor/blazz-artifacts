@@ -81,7 +81,10 @@ function parseProject(v: unknown): string | null {
   return p;
 }
 
-// Folder title and description: optional; empty or null clears.
+/** Folder and artifact descriptions (design 12): plain text, at most this many characters. */
+const DESCRIPTION_MAX = 1000;
+
+// Folder title, folder and artifact descriptions: optional; empty or null clears.
 function parseOptionalText(v: unknown, max: number, what: 'title' | 'description'): string | null {
   if (v === null) return null;
   if (typeof v !== 'string') throw new HttpError(400, what === 'title' ? 'invalid_folder_title' : 'invalid_description');
@@ -169,7 +172,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
   const artifactDto = (art: Artifact) => {
     const v = art.current_version_id ? getVersion(db, art.current_version_id) : undefined;
     return {
-      id: art.id, slug: art.slug, title: art.title, kind: art.kind, visibility: art.visibility,
+      id: art.id, slug: art.slug, title: art.title, description: art.description, kind: art.kind, visibility: art.visibility,
       hasCode: !!art.code_hash, memoryStorage: art.memory_storage === 1, createdAt: art.created_at, updatedAt: art.updated_at,
       project: art.project, tags: getTags(db, art.id),
       // Visibility of the project's folder (“shared through the folder” when not private); null without a project.
@@ -242,6 +245,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
       const visibility = parseVisibility(fields.visibility || 'private');
       const project = parseProject(fields.project);
       const tags = parseTags((fields.tags ?? '').split(',').filter((t) => t.trim() !== ''));
+      const description = fields.description === undefined ? null : parseOptionalText(fields.description, DESCRIPTION_MAX, 'description');
       const codeHash = visibility === 'code' ? await hashSecret(parseCode(fields.code)) : null;
       const id = newId();
       const versionId = newId();
@@ -250,7 +254,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
       try {
         const art = insertArtifactWithVersion(
           db,
-          { id, slug, title, kind: r.kind, visibility, code_hash: codeHash, memory_storage: ['true', '1'].includes(fields.memoryStorage ?? '') ? 1 : 0, project, tags },
+          { id, slug, title, description, kind: r.kind, visibility, code_hash: codeHash, memory_storage: ['true', '1'].includes(fields.memoryStorage ?? '') ? 1 : 0, project, tags },
           { id: versionId, entry_path: r.entryPath, original_name: file.originalName, size_bytes: r.sizeBytes, file_count: r.fileCount },
         );
         indexArtifact(db, cfg.dataDir, art);
@@ -280,6 +284,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     const patch: ArtifactPatch = {};
     let bump = false;
     if (body.title !== undefined) patch.title = parseTitle(body.title);
+    if (body.description !== undefined) patch.description = parseOptionalText(body.description, DESCRIPTION_MAX, 'description');
     if (typeof body.slug === 'string' && body.slug !== art.slug) {
       assertSlugFree(body.slug, art.id);
       patch.slug = body.slug;
@@ -648,7 +653,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     if (!name) throw new HttpError(400, 'invalid_folder_name');
     const patch: ProjectPatch = {};
     if (body.title !== undefined) patch.title = parseOptionalText(body.title, 120, 'title');
-    if (body.description !== undefined) patch.description = parseOptionalText(body.description, 1000, 'description');
+    if (body.description !== undefined) patch.description = parseOptionalText(body.description, DESCRIPTION_MAX, 'description');
     const parent = parseParent(body.parent);
     tx(db, () => {
       if (projectExists(db, name)) throw new HttpError(409, 'folder_exists');
@@ -678,7 +683,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     const patch: ProjectPatch = {};
     let bump = false;
     if (body.title !== undefined) patch.title = parseOptionalText(body.title, 120, 'title');
-    if (body.description !== undefined) patch.description = parseOptionalText(body.description, 1000, 'description');
+    if (body.description !== undefined) patch.description = parseOptionalText(body.description, DESCRIPTION_MAX, 'description');
     const visibility = body.visibility !== undefined ? parseVisibility(body.visibility) : current.visibility;
     if (visibility !== current.visibility) bump = true;
     if (typeof body.code === 'string' && body.code !== '') {

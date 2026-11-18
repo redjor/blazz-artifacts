@@ -34,7 +34,7 @@ Examples:
 ```bash
 python3 publish.py report.md                                        # private, slug "report"
 python3 publish.py ./mockups --visibility link --link-hours 48 --memory-storage
-python3 publish.py page.html --slug demo --project client-acme --tag v2 --tag mockup
+python3 publish.py page.html --slug demo --project client-acme --tag v2 --tag mockup --description "Booking flow, step 1"
 python3 publish.py --list-projects
 python3 publish.py --create-folder client-acme --title "Client Acme"
 python3 publish.py --share-folder client-acme                       # 7-day link to the folder page

@@ -59,7 +59,7 @@ export const api = {
   tags: () => request<LabelCount[]>('GET', '/tags'),
   get: (id: string) => request<ArtifactDetail>('GET', `/artifacts/${seg(id)}`),
   create: (form: FormData) => request<ArtifactDto>('POST', '/artifacts', form),
-  update: (id: string, patch: { title?: string; slug?: string; visibility?: Visibility; code?: string; memoryStorage?: boolean; project?: string | null; tags?: string[]; pinned?: boolean }) =>
+  update: (id: string, patch: { title?: string; description?: string | null; slug?: string; visibility?: Visibility; code?: string; memoryStorage?: boolean; project?: string | null; tags?: string[]; pinned?: boolean }) =>
     request<ArtifactDto>('PATCH', `/artifacts/${seg(id)}`, patch),
   replace: (id: string, form: FormData) => request<ArtifactDto>('PUT', `/artifacts/${seg(id)}/content`, form),
   /** To the trash (`trashed`), or deleted for good when the hub runs without a trash (TRASH_DAYS=0). */

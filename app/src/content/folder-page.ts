@@ -10,6 +10,8 @@ export interface FolderCard {
   /** Card target: /d/<project>/a/<slug>, or a signed path in the admin preview. */
   href: string;
   title: string; kind: Kind; updatedAt: string; versionNumber: number | null;
+  /** The artifact's description (design 12), or null. */
+  description?: string | null;
   /** Thumbnail URL (already signed), or null: kind pictogram. */
   thumbUrl: string | null;
 }
@@ -93,6 +95,7 @@ ${(['markdown', 'html', 'site', 'pdf', 'json'] as Kind[]).map((k) => `.k-${k}{ba
 .meta span+span::before{content:"·";margin-right:8px}
 .grid.folders{margin-bottom:44px}
 .sub{display:block;font-size:14px;color:var(--muted)}
+.card-desc{display:-webkit-box;margin:4px 0 0;overflow:hidden;color:var(--soft);font-size:15px;line-height:1.5;-webkit-box-orient:vertical;-webkit-line-clamp:3;text-wrap:pretty}
 .num{font-variant-numeric:tabular-nums}
 .preview{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin:12px 0 0;padding:12px 16px;border-radius:12px;background:var(--band);color:var(--soft);font-size:14px;line-height:1.45}
 .preview strong{color:var(--fg);font-weight:600}
@@ -120,9 +123,10 @@ function card(c: FolderCard, nowMs: number, locale: Locale): string {
     ? `<img src="${escapeHtml(c.thumbUrl)}" width="960" height="600" alt="" loading="lazy" decoding="async">`
     : svg(ICON_PATHS[c.kind], 64, 'glyph');
   const version = c.versionNumber ? `<span class="num">v${c.versionNumber}</span>` : '';
+  const desc = c.description?.trim() ? `\n<span class="card-desc">${typography(locale, escapeHtml(c.description.trim()))}</span>` : '';
   return `<li><a class="card" href="${escapeHtml(c.href)}">
 <span class="frame k-${c.kind}">${frame}</span>
-<span class="name">${typography(locale, escapeHtml(c.title))}</span>
+<span class="name">${typography(locale, escapeHtml(c.title))}</span>${desc}
 <span class="meta"><span>${tr(locale, `kind.${c.kind}`)}</span><span><time datetime="${escapeHtml(c.updatedAt)}" title="${dayFmt(locale).format(new Date(c.updatedAt))}">${folderRelativeDate(c.updatedAt, nowMs, locale)}</time></span>${version}</span>
 </a></li>`;
 }

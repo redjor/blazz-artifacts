@@ -19,7 +19,7 @@ const TABS: { id: TabId; label: MessageKey }[] = [
 ];
 
 export type Expiry = '24h' | '7d' | 'custom' | 'none';
-interface InfoDraft { title: string; slug: string; project: string; tags: string[] }
+interface InfoDraft { title: string; description: string; slug: string; project: string; tags: string[] }
 interface AccessDraft { visibility: Visibility; code: string }
 export interface LinkForm { label: string; expiry: Expiry; customDate: string }
 export const EMPTY_LINK: LinkForm = { label: '', expiry: '7d', customDate: '' };
@@ -31,7 +31,9 @@ export const ghost = 'inline-flex items-center justify-center gap-2 rounded-lg b
 export const iconButton = 'tip grid size-9 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-ink disabled:opacity-35 disabled:hover:bg-transparent aria-pressed:text-ink';
 
 const sameTags = (a: string[], b: string[]) => a.length === b.length && a.every((t, i) => t === b[i]);
-const infoOf = (a: ArtifactDto): InfoDraft => ({ title: a.title, slug: a.slug, project: a.project ?? '', tags: a.tags });
+const infoOf = (a: ArtifactDto): InfoDraft => ({ title: a.title, description: a.description ?? '', slug: a.slug, project: a.project ?? '', tags: a.tags });
+/** Same limit as the server (design 12). */
+const DESCRIPTION_MAX = 1000;
 
 export function Section({ title, children, description }: { title?: string; description?: ReactNode; children: ReactNode }) {
   return (
@@ -285,8 +287,8 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
     // Only an artifact change matters here (not a tab change).
   }, [id]);
 
-  const infoValues = info ?? (view ? infoOf(view) : { title: '', slug: '', project: '', tags: [] });
-  const infoDirty = !!(info && view) && (info.title !== view.title || info.slug !== view.slug || normalizeLabel(info.project) !== view.project || !sameTags(info.tags, view.tags));
+  const infoValues = info ?? (view ? infoOf(view) : { title: '', description: '', slug: '', project: '', tags: [] });
+  const infoDirty = !!(info && view) && (info.title !== view.title || info.description.trim() !== (view.description ?? '') || info.slug !== view.slug || normalizeLabel(info.project) !== view.project || !sameTags(info.tags, view.tags));
   const accessValues = access ?? { visibility: view?.visibility ?? 'private', code: '' };
   const accessDirty = !!(access && view) && (access.visibility !== view.visibility || (access.visibility === 'code' && access.code.length > 0));
   const linkDirty = linkForm.label.trim() !== '';
@@ -398,7 +400,7 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
     const project = normalizeLabel(info.project);
     // Same safeguard as “Move to…” and drag and drop: into a shared folder, the artifact becomes visible there.
     if (project !== view.project && !confirmMove(view, project)) return;
-    void act('info', () => api.update(view.id, { title: info.title, slug: info.slug, project, tags: info.tags }), t('notice.infoSaved'), () => setInfo(null));
+    void act('info', () => api.update(view.id, { title: info.title, description: info.description.trim() || null, slug: info.slug, project, tags: info.tags }), t('notice.infoSaved'), () => setInfo(null));
   };
 
   const saveAccess = (e: FormEvent) => {
@@ -524,6 +526,11 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
                 <label className="block space-y-1 text-sm">
                   <span className="text-muted">{t('common.title')}</span>
                   <input className={field} value={infoValues.title} maxLength={120} required onChange={(e) => setInfo({ ...infoValues, title: e.target.value })} />
+                </label>
+                <label className="block space-y-1 text-sm">
+                  <span className="text-muted">{t('common.description')} <span className="text-xs">{t('artifact.descriptionHint')}</span></span>
+                  <textarea className={`${field} min-h-20 resize-y leading-relaxed`} value={infoValues.description} maxLength={DESCRIPTION_MAX} rows={2}
+                    onChange={(e) => setInfo({ ...infoValues, description: e.target.value })} />
                 </label>
                 <label className="block space-y-1 text-sm">
                   <span className="text-muted">{t('field.address')}</span>

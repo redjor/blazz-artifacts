@@ -79,8 +79,9 @@ export function createContentApp(deps: ContentDeps): Hono {
       : null;
   const artifactPreview = (c: Context, art: Artifact, v: Version) => {
     const kind = v.kind ?? art.kind;
-    const excerpt = excerptOf(art.id, kind, v);
-    const description = excerpt?.text ?? excerpt?.heading ?? tr(loc(c), `kind.${kind}`);
+    // The owner's description first (design 12), else an excerpt of the content.
+    const excerpt = art.description ? null : excerptOf(art.id, kind, v);
+    const description = art.description ?? excerpt?.text ?? excerpt?.heading ?? tr(loc(c), `kind.${kind}`);
     return c.html(renderOgPage({ title: art.title, description, url: pageUrl(c), image: ogImageUrl(art, v) }, loc(c)));
   };
   const folderPreview = (c: Context, p: Project) => {
@@ -327,7 +328,7 @@ export function createContentApp(deps: ContentDeps): Hono {
       const href = preview
         ? `/a/${a.slug}/${signPath(keys.pathSig, { artifactId: a.id, versionId: v.id, epoch: a.access_epoch }, now)}/${encodePath(v.entry_path)}`
         : `/d/${p.name}/a/${encodePath(a.slug)}`;
-      return [{ href, title: a.title, kind: v.kind ?? a.kind, updatedAt: a.updated_at, versionNumber: v.number, thumbUrl }];
+      return [{ href, title: a.title, description: a.description, kind: v.kind ?? a.kind, updatedAt: a.updated_at, versionNumber: v.number, thumbUrl }];
     });
     const folders = children(db, p.name).map((ch) => ({
       href: preview ? null : `/d/${ch.name}`,
