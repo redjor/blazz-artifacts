@@ -3,7 +3,7 @@ import { CARD_DRAG_TYPE, ThumbImage, useThumbnail } from './ArtifactCard.tsx';
 import { FolderLink } from './FolderLink.tsx';
 import { formatDate, relativeDate, visibilityLabel, visibilityShort } from './format.ts';
 import { t, tn } from './i18n/index.ts';
-import { CopyIcon, FolderFilledIcon, KIND_ICON, MoreIcon, OpenIcon, ShareIcon, SlidersIcon, TrashIcon, VISIBILITY_ICON } from './icons.tsx';
+import { CopyIcon, FolderFilledIcon, MoreIcon, OpenIcon, ShareIcon, SlidersIcon, TrashIcon, VISIBILITY_ICON } from './icons.tsx';
 import { Popover } from './Popover.tsx';
 import type { FolderSummary } from './types.ts';
 
@@ -83,13 +83,21 @@ export function FolderMenu({ f, onOpen, onManage, onCopy, onShare, onDelete, onO
   );
 }
 
-/** Mosaic slot: thumbnail, else the kind's tinted tile; without an artifact, a dashed placeholder. */
+/**
+ * Mosaic slot: thumbnail, else the same paper sheet as the artifact cards (its title on the kind's band); without an
+ * artifact, a dashed placeholder.
+ */
 function Slot({ item }: { item: FolderSummary['recent'][number] | undefined }) {
   const [thumb, onError] = useThumbnail(item?.thumbnailUrl ?? null);
   if (!item) return <span className="block rounded-[10px] border border-dashed border-line-strong" />;
   if (thumb) return <ThumbImage src={thumb} onError={onError} className="size-full min-h-0 rounded-[10px]" />;
-  const Icon = KIND_ICON[item.kind];
-  return <span className={`tile kind-${item.kind} grid min-h-0 place-items-center rounded-[10px]`}><Icon className="size-6 sm:size-7" /></span>;
+  return (
+    <span className={`band kind-${item.kind} @container relative block min-h-0 overflow-hidden rounded-[10px]`}>
+      <span className="sheet sheet-front absolute top-[16%] right-[9%] left-[9%] h-full overflow-hidden px-[7%] pt-[6%]">
+        <span className="line-clamp-2 font-serif text-[9cqw] leading-[1.15] text-balance">{item.title}</span>
+      </span>
+    </span>
+  );
 }
 
 /** Relative date, artifact count and shared visibility (icon + text, never for a private folder). */

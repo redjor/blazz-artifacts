@@ -661,7 +661,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
         childCount: f.name === null ? 0 : children(db, f.name).length,
         recent: recent.map((a) => {
           const v = a.current_version_id ? getVersion(db, a.current_version_id) : undefined;
-          return { id: a.id, kind: a.kind, thumbnailUrl: v?.thumb_type ? `/api/artifacts/${enc(a.id)}/thumbnail?v=${thumbStamp(v)}` : null };
+          return { id: a.id, kind: a.kind, title: a.title, thumbnailUrl: v?.thumb_type ? `/api/artifacts/${enc(a.id)}/thumbnail?v=${thumbStamp(v)}` : null };
         }),
         url: f.name === null ? null : `${cfg.publicContentUrl}/d/${f.name}`,
         activeLinkUrl: f.name === null ? null : folderActiveLinkUrl(folderSheet(f.name)),

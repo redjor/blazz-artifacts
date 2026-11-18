@@ -987,7 +987,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
             While selecting, the selection bar takes the tools' place and the row sticks under the top bar. */}
         <div className={`relative flex flex-wrap items-center gap-x-3 gap-y-3 ${selecting ? 'sticky top-14 z-20 -my-2 bg-canvas py-2' : ''}`}>
           {/* On a phone the selection bar takes the title's room (the top bar still names the page). */}
-          <h1 title={pageTitle} className={`order-1 min-w-0 grow basis-0 truncate ${selecting ? 'max-sm:sr-only' : ''} font-serif text-[2rem] leading-tight font-semibold tracking-[-0.02em] sm:text-[2.25rem]`}>{pageTitle}</h1>
+          <h1 title={pageTitle} className={`order-1 min-w-0 grow basis-0 truncate ${selecting ? 'max-sm:sr-only' : ''} font-serif text-[1.75rem] leading-tight font-semibold tracking-[-0.02em] sm:text-[2.25rem]`}>{pageTitle}</h1>
 
           {searchOpen && (
             <label className="order-3 flex h-9 w-full items-center gap-2 rounded-full border border-line bg-surface px-3.5 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-ring sm:order-2 sm:w-56">
@@ -1082,8 +1082,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
                 )}
               </Popover>
             </div>
-            <Popover label={t('gallery.create')} trigger={<><PlusIcon className="size-[18px]" /><span>{t('gallery.create')}</span><ChevronDownIcon className="size-4 text-muted" /></>}
-              triggerClass="inline-flex h-9 items-center gap-1.5 rounded-lg bg-surface-2 pr-2 pl-2.5 text-sm font-medium hover:bg-surface-3 aria-expanded:bg-surface-3" panelClass="w-64 p-1.5">
+            {/* On phones only the icon shows (the label stays for screen readers): the page title gets the room. */}
+            <Popover label={t('gallery.create')} trigger={<><PlusIcon className="size-[18px]" /><span className="max-sm:sr-only">{t('gallery.create')}</span><ChevronDownIcon className="size-4 text-muted max-sm:hidden" /></>}
+              triggerClass="inline-flex h-9 items-center gap-1.5 rounded-lg bg-surface-2 pr-2 pl-2.5 text-sm font-medium hover:bg-surface-3 aria-expanded:bg-surface-3 max-sm:w-9 max-sm:justify-center max-sm:px-0" panelClass="w-64 p-1.5">
               {(close) => (
                 <>
                   <button type="button" aria-keyshortcuts="N" onClick={() => { close(); pick(ACCEPT_ALL); }} className={menuItem}>
@@ -1164,7 +1165,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
                 const card = folderKey(f.name);
                 return <FolderCard key={card} f={f} tabbable={card === tabbableId} onFocusCard={() => setFocusId(card)} sharedViaTitle={sharedViaTitleOf(f)} {...folderActionsFor(f)} />;
               })}
-              {visible.map((a) => <ArtifactCard key={a.id} a={a} tabbable={a.id === tabbableId} onFocusCard={() => setFocusId(a.id)} selecting={selecting} snippet={hits?.get(a.id)} fileDrop={fileDropFor(a)} {...actionsFor(a)} />)}
+              {visible.map((a) => <ArtifactCard key={a.id} a={a} tabbable={a.id === tabbableId} onFocusCard={() => setFocusId(a.id)} selecting={selecting} snippet={hits?.get(a.id)} fileDrop={fileDropFor(a)} hideFolder={a.project === inFolder} {...actionsFor(a)} />)}
             </ul>
           ) : (
             <ul ref={list} onKeyDown={onListKey} className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
@@ -1190,7 +1191,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
                           {a.pinned && <PinIcon className="size-3.5 text-muted" />}
                           <span className="truncate text-[15px]">{a.title}</span>
                         </span>
-                        <MetaLine a={a} />
+                        <MetaLine a={a} hideFolder={a.project === inFolder} />
                         {hits?.get(a.id) && <Snippet parts={hits.get(a.id)!} className="mt-1" />}
                         <span className="sr-only">{kindLabel(a.kind)}</span>
                       </span>

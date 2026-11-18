@@ -95,9 +95,14 @@ export function ActionsMenu({ a, onManage, onPreview, onQuickLook, onCopy, onSha
 }
 
 /** Quiet line: relative date, visibility (icon + text), views (hidden at zero), folder and tags. */
-export function MetaLine({ a, className = '' }: { a: ArtifactDto; className?: string }) {
+export function MetaLine({ a, className = '', hideFolder = false }: { a: ArtifactDto; className?: string;
+  /** Inside that folder's own page: its name would repeat on every card. */
+  hideFolder?: boolean;
+}) {
+  const folderName = hideFolder ? null : a.project;
   const Vis = VISIBILITY_ICON[a.visibility];
-  const sharedFolder = a.project && a.folderVisibility && a.folderVisibility !== 'private' ? a.folderVisibility : null;
+  // Inside the folder, its own top bar already says how it is shared.
+  const sharedFolder = folderName && a.folderVisibility && a.folderVisibility !== 'private' ? a.folderVisibility : null;
   return (
     <span className={`flex min-w-0 items-center gap-1.5 text-[13px] leading-5 text-muted ${className}`}>
       <time dateTime={a.updatedAt} title={t('common.modifiedOn', { date: formatDate(a.updatedAt) })} className="shrink-0">{relativeDate(a.updatedAt)}</time>
@@ -116,7 +121,7 @@ export function MetaLine({ a, className = '' }: { a: ArtifactDto; className?: st
           <span className="shrink-0 tabular-nums" title={t('card.viewsTitle', { total: formatCount(a.views.total), last30: formatCount(a.views.last30) })}>{formatViews(a.views.total)}</span>
         </>
       )}
-      {(a.project || a.tags.length > 0) && (
+      {(folderName || a.tags.length > 0) && (
         <>
           <span aria-hidden="true">·</span>
           {/* Folder shared: the artifact is visible through it whatever its own visibility. */}
@@ -126,7 +131,7 @@ export function MetaLine({ a, className = '' }: { a: ArtifactDto; className?: st
             </span>
           )}
           <span className="truncate">
-            {a.project}{a.project && a.tags.length > 0 && ' '}{a.tags.map((t) => `#${t}`).join(' ')}
+            {folderName}{folderName && a.tags.length > 0 && ' '}{a.tags.map((t) => `#${t}`).join(' ')}
           </span>
         </>
       )}
@@ -252,8 +257,10 @@ export interface FileDrop {
   handlers: { onDragOver: (e: DragEvent) => void; onDragLeave: (e: DragEvent) => void; onDrop: (e: DragEvent) => void };
 }
 
-export function ArtifactCard({ a, tabbable, onFocusCard, selecting, snippet, fileDrop, ...actions }: CardActions & {
+export function ArtifactCard({ a, tabbable, onFocusCard, selecting, snippet, fileDrop, hideFolder, ...actions }: CardActions & {
   a: ArtifactDto; tabbable: boolean; onFocusCard: () => void; selecting: boolean;
+  /** Shown inside its own folder: the meta line leaves the folder name out. */
+  hideFolder?: boolean;
   /** Search context when the text matched (design 07). */
   snippet?: SnippetPart[] | null;
   fileDrop?: FileDrop;
@@ -292,7 +299,7 @@ export function ArtifactCard({ a, tabbable, onFocusCard, selecting, snippet, fil
         </span>
         <span className="block border-t border-line px-4 pt-3 pb-3.5 sm:px-5">
           <span className="block truncate text-[15px] leading-6">{a.title}</span>
-          <MetaLine a={a} className="mt-0.5" />
+          <MetaLine a={a} className="mt-0.5" hideFolder={hideFolder} />
           {snippet && <Snippet parts={snippet} className="mt-1.5" />}
         </span>
       </button>

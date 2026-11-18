@@ -80,7 +80,7 @@ test('GET /api/projects : dernière activité, 4 plus récents (miniature), adre
   const client = by('client');
   assert.equal(client.latestUpdatedAt, '2026-01-06T00:00:00.000Z');
   assert.deepEqual(client.recent.map((r: { id: string }) => r.id), [more[2].id, more[1].id, more[0].id, h.pub.id]);
-  assert.deepEqual(client.recent[2], { id: more[0].id, kind: 'markdown', thumbnailUrl: null });
+  assert.deepEqual(client.recent[2], { id: more[0].id, kind: 'markdown', title: 'c3', thumbnailUrl: null });
   assert.match(client.recent[0].thumbnailUrl, new RegExp(`^/api/artifacts/${more[2].id}/thumbnail\\?v=`));
   assert.equal(client.url, 'https://artifacts.test/d/client');
   assert.equal(client.activeLinkUrl, null);
@@ -89,7 +89,7 @@ test('GET /api/projects : dernière activité, 4 plus récents (miniature), adre
   const sheet = getProject(h.db, 'interne')!;
   assert.equal(interne.latestUpdatedAt, sheet.updated_at);
   assert.ok(interne.latestUpdatedAt > '2026-01-03T00:00:00.000Z');
-  assert.deepEqual(interne.recent, [{ id: h.other.id, kind: 'html', thumbnailUrl: null }]);
+  assert.deepEqual(interne.recent, [{ id: h.other.id, kind: 'html', title: 'ailleurs', thumbnailUrl: null }]);
   assert.equal(interne.activeLinkUrl, link.body.url);
   assert.equal(interne.activeLinkUrl, (await h.call('GET', '/projects/interne')).body.activeLinkUrl);
 
@@ -100,7 +100,7 @@ test('GET /api/projects : dernière activité, 4 plus récents (miniature), adre
   const none = by(null);
   assert.equal(none.count, 1);
   assert.equal(none.latestUpdatedAt, '2026-02-01T00:00:00.000Z');
-  assert.deepEqual(none.recent, [{ id: loose.id, kind: 'pdf', thumbnailUrl: null }]);
+  assert.deepEqual(none.recent, [{ id: loose.id, kind: 'pdf', title: 'libre', thumbnailUrl: null }]);
   assert.equal(none.url, null);
   assert.equal(none.activeLinkUrl, null);
 });

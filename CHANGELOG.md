@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Gallery fixes: folder cards show the same paper sheets as artifact cards (title on the kind's colour) when an
+  artifact has no thumbnail; cards inside a folder no longer repeat its name; on phones the Create button keeps only
+  its icon so the page title is no longer cut.
 - Version notes and comparison: each version can carry a one-line note (`-m` in the CLI, a field next to “Replace
   file…”, or written later in the History tab), shown in the history, `--list-versions` and the visitor bar's version
   tooltip. “Compare” in the History tab shows two kept versions side by side, with screen sizes for HTML and sites.

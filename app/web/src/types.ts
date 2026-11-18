@@ -71,7 +71,7 @@ export interface FolderSummary {
   /** Latest activity: folder sheet or most recent artifact (null: nothing). */
   latestUpdatedAt: string | null;
   /** Up to 4 artifacts, newest first: the folder card mosaic. */
-  recent: { id: string; kind: Kind; thumbnailUrl: string | null }[];
+  recent: { id: string; kind: Kind; title: string; thumbnailUrl: string | null }[];
   /** Visitor address of the folder and active share link (null for “no folder”). */
   url: string | null; activeLinkUrl: string | null;
 }
