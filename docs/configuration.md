@@ -7,6 +7,7 @@ with an explicit message.
 |---|---|---|---|
 | `HUB_SECRET` | yes | | Base64, ≥ 32 bytes after decoding: `openssl rand -base64 48`. Derives (HKDF) the keys for grants, folder grants, signed paths, link encryption, previews and visit fingerprints. **Changing it** signs everyone out, invalidates grants and signed paths, and makes stored share links unreadable (re-create them). |
 | `PUBLIC_HUB_URL` | yes | | Admin origin, https (http only for `localhost`/`127.0.0.1`). Compared to the `Origin` header of mutations. |
+| `PUBLIC_HUB_ALT_URLS` | no | empty | Other origins of the same admin, comma-separated, https. Example: a private network name plus a public hostname behind an identity proxy (Cloudflare Access). Each is accepted as `Origin` for mutations and may frame signed paths. Must not contain `PUBLIC_CONTENT_URL`. |
 | `PUBLIC_CONTENT_URL` | yes | | Content origin, used for artifact, folder and share URLs returned by the API. |
 | `ADMIN_PASSWORD_HASH` | no | empty | `scrypt:…`, produced by `node src/scripts/hash-password.ts` (reads the password on stdin, 12 characters minimum). Empty: nobody can sign in (a warning is logged). |
 | `API_TOKEN_HASH` | no | empty | 64 hex characters, produced by `node src/scripts/new-api-token.ts` (prints `token=` and `hash=`). Empty: Bearer authentication disabled. |

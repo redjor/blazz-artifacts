@@ -5,7 +5,7 @@ import { Readable } from 'node:stream';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { getCookie, setCookie } from 'hono/cookie';
-import type { Config } from '../config.ts';
+import { hubOrigins, type Config } from '../config.ts';
 import { sha256, verifySecret, type Keys } from '../crypto.ts';
 import type { Db } from '../db.ts';
 import { registerFavicon } from '../favicon.ts';
@@ -42,7 +42,7 @@ export function createContentApp(deps: ContentDeps): Hono {
   const { db, cfg, keys, codeLimiter } = deps;
   const nowMs = () => (deps.now ?? Date.now)();
   const nowS = () => Math.floor(nowMs() / 1000);
-  const adminOrigin = new URL(cfg.publicHubUrl).origin;
+  const adminOrigin = hubOrigins(cfg).join(' ');
   const app = new Hono();
   const visits = createVisitRecorder(db, cfg.hubSecret);
   // Language of the visitor pages: HUB_LOCALE, or the visitor's Accept-Language with HUB_LOCALE=auto.

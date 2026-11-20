@@ -7,6 +7,8 @@ export interface Config {
   adminPasswordHash: string;
   apiTokenHash: string;
   publicHubUrl: string;
+  /** Other origins of the same admin (PUBLIC_HUB_ALT_URLS, comma-separated): trusted for mutations and framing. */
+  hubAltUrls: string[];
   publicContentUrl: string;
   maxUploadBytes: number;
   zipMaxFiles: number;
@@ -53,14 +55,28 @@ function flag(env: NodeJS.ProcessEnv, name: string, fallback: boolean): boolean 
   throw new Error(`${name} must be 0 or 1`);
 }
 
-function publicOrigin(env: NodeJS.ProcessEnv, name: string): string {
-  const url = new URL(required(env, name));
+function publicOrigin(env: NodeJS.ProcessEnv, name: string, raw: string = required(env, name)): string {
+  const url = new URL(raw);
   const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
   if (url.protocol !== 'https:' && !(local && url.protocol === 'http:')) {
     throw new Error(`${name} must be an https URL`);
   }
   return url.origin;
 }
+
+function altHubOrigins(env: NodeJS.ProcessEnv): string[] {
+  const content = publicOrigin(env, 'PUBLIC_CONTENT_URL');
+  const list = (env.PUBLIC_HUB_ALT_URLS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  return list.map((raw) => {
+    const origin = publicOrigin(env, 'PUBLIC_HUB_ALT_URLS', raw);
+    // The content origin serves untrusted pages: it must never be trusted as an admin origin.
+    if (origin === content) throw new Error('PUBLIC_HUB_ALT_URLS must not contain PUBLIC_CONTENT_URL');
+    return origin;
+  });
+}
+
+/** Every origin of the admin, primary first. */
+export const hubOrigins = (cfg: Pick<Config, 'publicHubUrl' | 'hubAltUrls'>): string[] => [cfg.publicHubUrl, ...cfg.hubAltUrls];
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const hubSecret = Buffer.from(required(env, 'HUB_SECRET'), 'base64');
@@ -81,6 +97,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     adminPasswordHash,
     apiTokenHash,
     publicHubUrl: publicOrigin(env, 'PUBLIC_HUB_URL'),
+    hubAltUrls: altHubOrigins(env),
     publicContentUrl: publicOrigin(env, 'PUBLIC_CONTENT_URL'),
     maxUploadBytes: positiveInt(env, 'MAX_UPLOAD_MB', 100) * 1024 * 1024,
     zipMaxFiles: positiveInt(env, 'ZIP_MAX_FILES', 2000),

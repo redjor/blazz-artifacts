@@ -17,6 +17,7 @@ export function testConfig(dataDir: string, over: Partial<Config> = {}): Config 
     adminPasswordHash: '',
     apiTokenHash: '',
     publicHubUrl: 'https://hub.test',
+    hubAltUrls: [],
     publicContentUrl: 'https://artifacts.test',
     maxUploadBytes: 1024 * 1024,
     zipMaxFiles: 50,

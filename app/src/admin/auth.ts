@@ -1,6 +1,6 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
-import type { Config } from '../config.ts';
+import { hubOrigins, type Config } from '../config.ts';
 import { randomToken, safeEqual, sha256 } from '../crypto.ts';
 import type { Db } from '../db.ts';
 import { clientIp, HttpError } from '../http.ts';
@@ -36,7 +36,7 @@ export function tokenMiddleware(cfg: Config, limiter: RateLimiter): MiddlewareHa
 export function originGuard(cfg: Config): MiddlewareHandler<AdminEnv> {
   return async (c, next) => {
     if (c.get('viaToken')) return next();
-    if (MUTATIONS.has(c.req.method) && c.req.header('origin') !== cfg.publicHubUrl) {
+    if (MUTATIONS.has(c.req.method) && !hubOrigins(cfg).includes(c.req.header('origin') ?? '')) {
       throw new HttpError(403, 'origin_refused');
     }
     await next();

@@ -89,7 +89,8 @@ the redirect for everyone.
 ### Admin preview
 
 The artifact panel shows the artifact live and the gallery has a full-window quick look (design 14). Both frame a
-signed admin preview path, so signed-path files also name the admin origin (`PUBLIC_HUB_URL`) in `frame-ancestors`,
+signed admin preview path, so signed-path files also name the admin origins (`PUBLIC_HUB_URL` and
+`PUBLIC_HUB_ALT_URLS`) in `frame-ancestors`,
 and the admin CSP allows that one origin in `frame-src` (`frame-src <content origin>`); `default-src 'self'` still
 governs everything else, and the admin itself is never framed (`frame-ancestors 'none'`). Browsers that honour CSP
 ignore `X-Frame-Options` when `frame-ancestors` is present; older ones apply `SAMEORIGIN` and simply show no preview.
@@ -118,7 +119,15 @@ Folders nest up to 4 levels, and access is always inherited: a visitor reaches f
 
 Single account. Password: scrypt (`scrypt:N:r:p:salt:hash`, no `$` so Compose does not interpolate it). Session cookie
 `__Host-hub_session` (HttpOnly, Secure, SameSite=Strict, 7 days), only its SHA-256 stored. Mutations require
-`Origin == PUBLIC_HUB_URL` and `X-CSRF-Token`. The API token (`Authorization: Bearer`) bypasses cookies, Origin and CSRF
+an `Origin` equal to `PUBLIC_HUB_URL` or one of `PUBLIC_HUB_ALT_URLS` (never the content origin: refused at start-up),
+and `X-CSRF-Token`.
+
+Admin and content on the same registrable domain (`hub.example.com`, `artifacts.example.com`) are same-site. This is
+acceptable because published pages never run in a same-site context: every content response except PDF is served
+under CSP `sandbox` without `allow-same-origin`, so its requests come from an opaque origin and are cross-site
+(`SameSite=Strict` cookies are not sent); the unsandboxed frame page allows no script; responses never set cookies
+other than `__Host-` ones, which cannot be scoped to the parent domain. A separate registrable domain for the admin
+remains the stronger choice. The API token (`Authorization: Bearer`) bypasses cookies, Origin and CSRF
 (no cookie, no CSRF), cannot sign in or out, and an invalid token fails even with a valid session cookie.
 
 ## Uploads

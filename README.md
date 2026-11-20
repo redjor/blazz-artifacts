@@ -60,6 +60,7 @@ Both ports are bound to `127.0.0.1`: put a reverse proxy in front with two hostn
 |---|---|---|
 | `HUB_SECRET` | required | Base64, at least 32 bytes (`openssl rand -base64 48`). Every signing and encryption key derives from it; changing it invalidates sessions, grants and share links. |
 | `PUBLIC_HUB_URL` | required | Public origin of the admin server (https; `http://localhost` allowed for development). Mutations must carry this `Origin`. |
+| `PUBLIC_HUB_ALT_URLS` | empty | Other admin origins, comma-separated (for example a tailnet name and a public hostname behind an identity proxy). Trusted like `PUBLIC_HUB_URL`. |
 | `PUBLIC_CONTENT_URL` | required | Public origin of the content server, used to build artifact, folder and share URLs. |
 | `ADMIN_PASSWORD_HASH` | empty | `scrypt:…` from `src/scripts/hash-password.ts`. Empty: admin sign-in impossible. |
 | `API_TOKEN_HASH` | empty | SHA-256 hex from `src/scripts/new-api-token.ts`. Empty: API token disabled. |
