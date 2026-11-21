@@ -6,6 +6,7 @@ export type Visibility = 'private' | 'code' | 'link' | 'public';
 export const VISIBILITIES: readonly Visibility[] = ['private', 'code', 'link', 'public'];
 
 export interface Artifact {
+  theme_id: string | null;
   id: string; slug: string; title: string; kind: Kind; visibility: Visibility;
   /** Optional plain text under the title (design 12). */
   description: string | null;
@@ -18,6 +19,7 @@ export interface Artifact {
   deleted_at: string | null;
 }
 export interface Version {
+  theme_snapshot: string | null;
   id: string; artifact_id: string; entry_path: string; original_name: string;
   size_bytes: number; file_count: number; created_at: string;
   kind: Kind | null; number: number;
@@ -34,7 +36,7 @@ export interface ShareLink {
 export interface Session { id_hash: string; csrf_token: string; expires_at: string; created_at: string }
 
 export type NewArtifact = Pick<Artifact, 'id' | 'slug' | 'title' | 'kind' | 'visibility' | 'code_hash'> & { memory_storage?: number; project?: string | null; tags?: string[]; description?: string | null };
-export type NewVersion = Pick<Version, 'id' | 'entry_path' | 'original_name' | 'size_bytes' | 'file_count'> & { message?: string | null };
+export type NewVersion = Pick<Version, 'id' | 'entry_path' | 'original_name' | 'size_bytes' | 'file_count'> & { message?: string | null; theme_snapshot?: string | null };
 
 const nowIso = () => new Date().toISOString();
 
@@ -102,9 +104,9 @@ export function listTagCounts(db: Db): LabelCount[] {
 // Call inside a transaction: the number is max+1, never reused (the highest version is never pruned).
 function insertVersion(db: Db, artifactId: string, v: NewVersion, kind: Kind, at: string): void {
   db.prepare(
-    `INSERT INTO versions (id, artifact_id, entry_path, original_name, size_bytes, file_count, created_at, kind, message, number)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(number), 0) + 1 FROM versions WHERE artifact_id = ?))`,
-  ).run(v.id, artifactId, v.entry_path, v.original_name, v.size_bytes, v.file_count, at, kind, v.message ?? null, artifactId);
+    `INSERT INTO versions (id, artifact_id, entry_path, original_name, size_bytes, file_count, created_at, kind, message, theme_snapshot, number)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(number), 0) + 1 FROM versions WHERE artifact_id = ?))`,
+  ).run(v.id, artifactId, v.entry_path, v.original_name, v.size_bytes, v.file_count, at, kind, v.message ?? null, v.theme_snapshot ?? null, artifactId);
 }
 
 export function insertArtifactWithVersion(db: Db, a: NewArtifact, v: NewVersion): Artifact {
@@ -120,11 +122,13 @@ export function insertArtifactWithVersion(db: Db, a: NewArtifact, v: NewVersion)
   return getArtifact(db, a.id)!;
 }
 
-export function activateVersion(db: Db, artifactId: string, v: NewVersion, kind: Kind): void {
+export function activateVersion(db: Db, artifactId: string, v: NewVersion, kind: Kind, themeId?: string | null, afterActivate?: () => void): void {
   const at = nowIso();
   tx(db, () => {
     insertVersion(db, artifactId, v, kind, at);
+    if (themeId !== undefined) db.prepare('UPDATE artifacts SET theme_id = ? WHERE id = ?').run(themeId, artifactId);
     db.prepare('UPDATE artifacts SET current_version_id = ?, kind = ?, updated_at = ? WHERE id = ?').run(v.id, kind, at, artifactId);
+    afterActivate?.();
   });
 }
 
@@ -144,6 +148,7 @@ export function restoreVersion(db: Db, artifactId: string, versionId: string): V
 
 /** Folder sheet (shareable project). A project without a sheet is private. */
 export interface Project {
+  theme_id: string | null;
   name: string; title: string | null; description: string | null; visibility: Visibility; code_hash: string | null;
   access_epoch: number; created_at: string; updated_at: string;
   /** Random, set when the sheet is created; bound to the folder's cookies, signed thumbnails and previews. */
@@ -158,7 +163,7 @@ export function getProject(db: Db, name: string): Project | undefined {
   return db.prepare('SELECT * FROM projects WHERE name = ?').get(name) as Project | undefined;
 }
 
-export type ProjectPatch = Partial<Pick<Project, 'title' | 'description' | 'visibility' | 'code_hash'>>;
+export type ProjectPatch = Partial<Pick<Project, 'title' | 'description' | 'visibility' | 'code_hash' | 'theme_id'>>;
 
 /** Creates the sheet on the fly then applies `patch`; `bump` increments the folder access epoch (folder cookies invalidated). */
 export function upsertProject(db: Db, name: string, patch: ProjectPatch, bump = false): Project {
@@ -166,7 +171,7 @@ export function upsertProject(db: Db, name: string, patch: ProjectPatch, bump = 
   db.prepare('INSERT OR IGNORE INTO projects (name, created_at, updated_at, salt) VALUES (?, ?, ?, ?)').run(name, at, at, randomToken(16));
   const sets: string[] = ['updated_at = ?'];
   const values: (string | null)[] = [at];
-  for (const key of ['title', 'description', 'visibility', 'code_hash'] as const) {
+  for (const key of ['title', 'description', 'visibility', 'code_hash', 'theme_id'] as const) {
     if (patch[key] !== undefined) {
       sets.push(`${key} = ?`);
       values.push(patch[key] as string | null);
@@ -256,8 +261,8 @@ export function listFolders(db: Db): FolderSummary[] {
   return Number(none.n) > 0 ? [...named, { name: null, count: Number(none.n), privateCount: Number(none.p), visibility: 'private', title: null, parent: null, position: null }] : named;
 }
 
-export type ArtifactPatch = Partial<Pick<Artifact, 'title' | 'slug' | 'description' | 'visibility' | 'code_hash' | 'memory_storage' | 'project'>>;
-const PATCHABLE = ['title', 'slug', 'description', 'visibility', 'code_hash', 'memory_storage', 'project'] as const;
+export type ArtifactPatch = Partial<Pick<Artifact, 'title' | 'slug' | 'description' | 'visibility' | 'code_hash' | 'memory_storage' | 'project' | 'theme_id'>>;
+const PATCHABLE = ['title', 'slug', 'description', 'visibility', 'code_hash', 'memory_storage', 'project', 'theme_id'] as const;
 
 export function updateArtifact(db: Db, id: string, patch: ArtifactPatch, bump: boolean): Artifact {
   const sets: string[] = ['updated_at = ?'];

@@ -75,6 +75,7 @@ export function openDb(file: string): Db {
   migrateThumbs(db);
   migrateFolders(db);
   migrateDescriptions(db);
+  migrateThemes(db);
   migrateTrash(db);
   migrateSearch(db);
   return db;
@@ -284,4 +285,15 @@ export function tx<T>(db: Db, fn: () => T): T {
     db.exec('ROLLBACK');
     throw err;
   }
+}
+
+function migrateThemes(db: Db): void {
+  tx(db, () => {
+    db.exec('CREATE TABLE IF NOT EXISTS themes (id TEXT PRIMARY KEY, data TEXT NOT NULL)');
+    for (const table of ['artifacts', 'projects', 'versions']) {
+      const name = table === 'versions' ? 'theme_snapshot' : 'theme_id';
+      const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+      if (!cols.some(c => c.name === name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} TEXT${table === 'versions' ? '' : ' REFERENCES themes(id) ON DELETE SET NULL'}`);
+    }
+  });
 }

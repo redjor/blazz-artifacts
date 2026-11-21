@@ -31,6 +31,6 @@ test('aperçu admin : la CSP de l’admin n’ouvre les cadres qu’à l’origi
   const h = await setup({ adminPasswordHash: await hashSecret('mot-de-passe-solide') });
   const admin = createAdminApp({ db: h.db, cfg: h.cfg, keys: h.keys, loginLimiter: new RateLimiter(loginLimiterOptions) });
   const csp = (await admin.request('/api/session')).headers.get('content-security-policy')!;
-  assert.match(csp, /(^|; )frame-src https:\/\/artifacts\.test(;|$)/);
+  assert.match(csp, /(^|; )frame-src 'self' https:\/\/artifacts\.test(;|$)/);
   assert.match(csp, /frame-ancestors 'none'/, 'the admin is never framed');
 });

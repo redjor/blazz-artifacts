@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type K
 import { createPortal } from 'react-dom';
 import { api, copyText, openPreview } from './api.ts';
 import { ThumbImage, useThumbnail } from './ArtifactCard.tsx';
+import { ThemeSection } from './Themes.tsx';
 import { Audience } from './Audience.tsx';
 import { formatBytes, formatCount, formatDate, formatViews, kindLabel, modifiedText, normalizeLabel, visibilityLabel } from './format.ts';
 import { t, tn, type MessageKey } from './i18n/index.ts';
@@ -679,6 +680,10 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
                 </div>
               </form>
             </Section>
+
+            {view.kind === 'markdown' && <ThemeSection key={`${view.id}:${view.themeId ?? ''}:${view.version?.id}`} themeId={view.themeId ?? null} effectiveThemeId={view.effectiveThemeId ?? null}
+              artifactId={view.id} versionId={view.version?.id} onSave={async (themeId) => { await api.update(view.id, { themeId }); await refresh(); onChanged(); }}
+              onChanged={async () => { await refresh(); onChanged(); }} />}
 
             <Section title={t('content.title')} description={t('content.description')}>
               {view.version && (

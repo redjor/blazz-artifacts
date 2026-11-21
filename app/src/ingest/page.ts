@@ -1,3 +1,5 @@
+import { googleFontCss, themeFontFamily } from '../google-fonts.ts';
+import type { Theme } from '../themes.ts';
 import { FONT_FACES, FONT_STACK } from '../fonts.ts';
 import { tr, type Locale } from '../i18n.ts';
 
@@ -214,7 +216,7 @@ function tocHtml(toc: { id: string; label: string }[], locale: Locale): string {
 export const typography = (locale: Locale, html: string) => (locale === 'fr' ? frenchSpacing(html) : html);
 
 // Reader page for Markdown and JSON. `body` is already sanitised HTML.
-export function renderArticle(o: { fallbackTitle: string; body: string; originalHref?: string; originalLabel?: string; locale?: Locale }): string {
+export function renderArticle(o: { theme?: Theme | null; fallbackTitle: string; body: string; originalHref?: string; originalLabel?: string; locale?: Locale }): string {
   const locale = o.locale ?? 'en';
   const isJson = /^<pre><code>/.test(o.body);
   const source = isJson ? o.body : typography(locale, o.body);
@@ -232,14 +234,16 @@ export function renderArticle(o: { fallbackTitle: string; body: string; original
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(plainTitle)}</title>
-<style>${ARTICLE_CSS}</style>
+<style>${ARTICLE_CSS}${o.theme ? themeCss(o.theme) : ''}</style>
 </head>
 <body>
 <input type="checkbox" id="theme-toggle" class="theme-toggle" aria-label="${tr(locale, 'theme.toggle')}">
 <div class="page">
 <nav class="toolbar">${original}<label for="theme-toggle" class="theme-btn" aria-hidden="true"><span class="to-dark">◐ ${tr(locale, 'theme.dark')}</span><span class="to-light">◑ ${tr(locale, 'theme.light')}</span></label></nav>
+${o.theme ? themeBrand(o.theme) : ''}
 <header class="doc-head"><h1 class="doc-title">${titleHtml}</h1></header>
 <article class="prose">${body}</article>
+${o.theme?.footer ? `<footer class="client-footer">${escapeHtml(o.theme.footer)}</footer>` : ''}
 </div>
 ${tocHtml(anchored.toc, locale)}
 </body>
@@ -263,4 +267,29 @@ export function renderDocument(o: { title: string; body: string; originalHref?: 
 <body><main>${header}${o.body}</main></body>
 </html>
 `;
+}
+
+function themeBrand(t: Theme): string {
+  return `<div class="client-brand">${t.logoDataUrl ? `<img src="${escapeHtml(t.logoDataUrl)}" alt="${escapeHtml(t.clientName)}">` : ''}${t.clientName ? `<strong>${escapeHtml(t.clientName)}</strong>` : ''}${t.header ? `<p>${escapeHtml(t.header)}</p>` : ''}</div>`;
+}
+function themeCss(t: Theme): string {
+  const font = themeFontFamily(t.font);
+  const width = { narrow: '56ch', standard: '68ch', wide: '92ch' }[t.width];
+  const layout = { documentation: '.doc-head,.prose h1,.prose h2{text-align:left}.prose h1::after,.prose h2::after{margin-left:0}', report: '.doc-head{padding:40px 0;border-top:4px solid var(--client-primary);border-bottom:1px solid var(--rule)}', editorial: '.doc-title{font-size:clamp(2.5rem,5vw,4rem)}.prose{line-height:1.85}' }[t.preset];
+  const light = `--client-title:${accessibleColor(t.primaryColor, '#faf7f2')};--client-link:${accessibleColor(t.accentColor, '#faf7f2')}`;
+  const dark = `--client-title:${accessibleColor(t.primaryColor, '#161312')};--client-link:${accessibleColor(t.accentColor, '#161312')}`;
+  return `${googleFontCss(t.font, t.fontData)}:root{${light}}html:has(#theme-toggle:checked){${dark}}@media(prefers-color-scheme:dark){:root{${dark}}html:has(#theme-toggle:checked){${light}}}:root{--client-primary:${t.primaryColor};--client-accent:${t.accentColor}}body{font-family:${font}}.page{max-width:${width}}.doc-title{color:var(--client-title)}.prose a{color:var(--client-link)}.prose h1::after,.prose h2::after{background:var(--client-accent)}.client-brand{margin-top:32px;padding-bottom:24px;border-bottom:1px solid var(--rule);white-space:pre-wrap}.client-brand img{display:block;max-width:180px;max-height:80px;object-fit:contain;margin-bottom:16px}.client-brand strong{display:block}.client-brand p{margin-bottom:0}.client-footer{margin-top:48px;padding-top:24px;border-top:1px solid var(--rule);font-size:14px;color:var(--muted);white-space:pre-wrap}${layout}@media print{.doc-title{color:#000}.prose a{color:#000}}`;
+}
+
+/** Mix toward the contrasting endpoint until text reaches WCAG AA on its reading palette. */
+export function accessibleColor(color: string, background: string): string {
+  const rgb = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  const luminance = (v: number[]) => v.map(n => { const c = n / 255; return c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4; }).reduce((sum, n, i) => sum + n * [.2126, .7152, .0722][i], 0);
+  const bg = luminance(rgb(background)), input = rgb(color), end = bg > .5 ? 0 : 255;
+  for (let step = 0; step <= 100; step++) {
+    const mixed = input.map(n => Math.round(n + (end - n) * step / 100));
+    const l = luminance(mixed);
+    if ((Math.max(l, bg) + .05) / (Math.min(l, bg) + .05) >= 4.5) return '#' + mixed.map(n => n.toString(16).padStart(2, '0')).join('');
+  }
+  return end === 0 ? '#000000' : '#ffffff';
 }

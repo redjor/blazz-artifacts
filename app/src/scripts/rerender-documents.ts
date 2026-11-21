@@ -24,7 +24,7 @@ for (const art of listArtifacts(db)) {
     console.error(`skipped (missing source): ${art.slug}`);
     continue;
   }
-  const page = renderSourcePage(art.kind, readFileSync(source, 'utf8'), art.title, locale);
+  const page = renderSourcePage(art.kind, readFileSync(source, 'utf8'), art.title, locale, version.theme_snapshot ? JSON.parse(version.theme_snapshot) : null);
   const target = join(dir, 'index.html');
   writeFileSync(`${target}.tmp`, page);
   chmodSync(`${target}.tmp`, FILE_MODE);

@@ -68,7 +68,7 @@ test('migration dossiers sur le schéma de production : share_links reconstruite
   assert.ok(cols.some((c) => c.name === 'project_name'));
   assert.ok(columns(db, 'artifacts').some((c) => c.name === 'project_position'));
   assert.deepEqual(columns(db, 'projects').map((c) => c.name),
-    ['name', 'title', 'description', 'visibility', 'code_hash', 'access_epoch', 'created_at', 'updated_at', 'salt', 'parent_name', 'position']);
+    ['name', 'title', 'description', 'visibility', 'code_hash', 'access_epoch', 'created_at', 'updated_at', 'salt', 'parent_name', 'position', 'theme_id']);
   assert.ok(listFolders(db).every((f) => f.parent === null));
   const indexes = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'share_links'").all() as { name: string }[]).map((r) => r.name);
   for (const name of ['share_links_artifact', 'share_links_project']) assert.ok(indexes.includes(name), name);

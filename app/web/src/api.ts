@@ -1,5 +1,5 @@
 import { errorText, t } from './i18n/index.ts';
-import type { ArtifactDetail, ArtifactDto, BulkOp, SearchResultDto, FolderDetail, FolderSummary, LabelCount, LinkDto, StatsDto, TrashItemDto, VersionDto, Visibility } from './types.ts';
+import type { GoogleFontFamily, MarkdownTheme, ThemeDraft, ArtifactDetail, ArtifactDto, BulkOp, SearchResultDto, FolderDetail, FolderSummary, LabelCount, LinkDto, StatsDto, TrashItemDto, VersionDto, Visibility } from './types.ts';
 
 let csrf = '';
 const seg = encodeURIComponent; // identifiers inside paths
@@ -45,6 +45,13 @@ async function request<T>(method: string, path: string, body?: FormData | Blob |
 }
 
 export const api = {
+  themeFonts: () => request<{ fonts: GoogleFontFamily[]; updatedAt: string }>('GET', '/themes/fonts'),
+  themes: () => request<MarkdownTheme[]>('GET', '/themes'),
+  saveTheme: (draft: ThemeDraft, id?: string) => request<MarkdownTheme>(id ? 'PUT' : 'POST', id ? `/themes/${seg(id)}` : '/themes', draft),
+  deleteTheme: (id: string) => request<{ ok: true }>('DELETE', `/themes/${seg(id)}`),
+  themePreview: (draft: ThemeDraft) => request<{ url: string }>('POST', '/themes/preview', draft),
+  artifactThemePreview: (id: string, themeId: string | null) => request<{ url: string; previewToken: string }>('POST', `/artifacts/${seg(id)}/theme-preview`, { themeId }),
+  applyTheme: (id: string, themeId: string | null, versionId: string, previewToken: string) => request<ArtifactDto>('POST', `/artifacts/${seg(id)}/apply-theme`, { themeId, versionId, previewToken }),
   async session() {
     const s = await request<{ authenticated: boolean; csrfToken: string | null }>('GET', '/session');
     csrf = s.csrfToken ?? '';
@@ -59,7 +66,7 @@ export const api = {
   tags: () => request<LabelCount[]>('GET', '/tags'),
   get: (id: string) => request<ArtifactDetail>('GET', `/artifacts/${seg(id)}`),
   create: (form: FormData) => request<ArtifactDto>('POST', '/artifacts', form),
-  update: (id: string, patch: { title?: string; description?: string | null; slug?: string; visibility?: Visibility; code?: string; memoryStorage?: boolean; project?: string | null; tags?: string[]; pinned?: boolean }) =>
+  update: (id: string, patch: { themeId?: string | null; title?: string; description?: string | null; slug?: string; visibility?: Visibility; code?: string; memoryStorage?: boolean; project?: string | null; tags?: string[]; pinned?: boolean }) =>
     request<ArtifactDto>('PATCH', `/artifacts/${seg(id)}`, patch),
   replace: (id: string, form: FormData) => request<ArtifactDto>('PUT', `/artifacts/${seg(id)}/content`, form),
   /** To the trash (`trashed`), or deleted for good when the hub runs without a trash (TRASH_DAYS=0). */
@@ -89,7 +96,7 @@ export const api = {
   restore: (id: string, versionId: string) => request<ArtifactDto>('POST', `/artifacts/${seg(id)}/versions/${seg(versionId)}/restore`),
   createFolder: (body: { name: string; title?: string; description?: string; parent?: string | null }) => request<FolderDetail>('POST', '/projects', body),
   folder: (name: string) => request<FolderDetail>('GET', `/projects/${seg(name)}`),
-  updateFolder: (name: string, patch: { title?: string | null; description?: string | null; visibility?: Visibility; code?: string; name?: string; parent?: string | null }) =>
+  updateFolder: (name: string, patch: { themeId?: string | null; title?: string | null; description?: string | null; visibility?: Visibility; code?: string; name?: string; parent?: string | null }) =>
     request<FolderDetail>('PATCH', `/projects/${seg(name)}`, patch),
   orderFolderChildren: (name: string, names: string[]) => request<FolderDetail>('PUT', `/projects/${seg(name)}/children-order`, { names }),
   shareFolder: (name: string, body: { hours?: number; label?: string }) =>

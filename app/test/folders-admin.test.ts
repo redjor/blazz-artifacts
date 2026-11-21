@@ -357,7 +357,7 @@ test('POST /api/projects : crée un dossier vide et privé (nom normalisé, sel 
   assert.equal(getProject(h.db, 'ok-1'), undefined);
   const list = (await h.call('GET', '/projects')).body as { name: string; count: number }[];
   assert.deepEqual(list.find((f) => f.name === 'ete-2026-client'), {
-    name: 'ete-2026-client', count: 0, privateCount: 0, visibility: 'private', title: 'Maquettes', parent: null, position: null,
+    name: 'ete-2026-client', themeId: null, effectiveThemeId: null, count: 0, privateCount: 0, visibility: 'private', title: 'Maquettes', parent: null, position: null,
     latestUpdatedAt: getProject(h.db, 'ete-2026-client')!.updated_at, recent: [], url: 'https://artifacts.test/d/ete-2026-client', activeLinkUrl: null, childCount: 0,
   });
 });

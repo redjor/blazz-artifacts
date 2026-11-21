@@ -17,6 +17,7 @@ export interface SearchResultDto { id: string; snippet: SnippetPart[] | null }
 export type BulkOp = 'move' | 'addTags' | 'removeTags' | 'visibility' | 'pin' | 'unpin' | 'trash' | 'restore';
 
 export interface ArtifactDto {
+  themeId?: string | null; effectiveThemeId?: string | null;
   id: string; slug: string; title: string; kind: Kind; visibility: Visibility; hasCode: boolean; memoryStorage: boolean; project: string | null; tags: string[];
   /** Optional text under the title (design 12). */
   description: string | null;
@@ -83,6 +84,7 @@ export interface FolderArtifact {
 
 /** Shareable folder of a project (sheet created on the fly). */
 export interface FolderDetail {
+  themeId?: string | null; effectiveThemeId?: string | null;
   name: string; title: string | null; description: string | null; visibility: Visibility; hasCode: boolean;
   /** False until the folder has been described or shared (implicitly private). */
   hasSheet: boolean;
@@ -98,3 +100,15 @@ export interface FolderDetail {
   /** Direct sub-folders in visitor order. */
   children: { name: string; title: string | null; visibility: Visibility; count: number }[];
 }
+
+export type ThemeFont = 'sans' | 'serif' | 'mono' | `google:${string}`;
+export interface GoogleFontFamily { family: string; category: string }
+
+/** Reusable client branding; rendered versions retain their own snapshot. */
+export interface MarkdownTheme {
+  id: string; name: string; clientName: string; logoDataUrl: string;
+  primaryColor: string; accentColor: string;
+  font: ThemeFont; width: 'narrow' | 'standard' | 'wide';
+  preset: 'documentation' | 'report' | 'editorial'; header: string; footer: string;
+}
+export type ThemeDraft = Omit<MarkdownTheme, 'id'>;

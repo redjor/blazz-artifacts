@@ -1,3 +1,4 @@
+import { fontFile } from '../fonts.ts';
 import { Hono, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { Config } from '../config.ts';
@@ -10,9 +11,9 @@ import { createApiRoutes } from './api.ts';
 import { csrfGuard, endSession, originGuard, requireSession, sessionMiddleware, startSession, tokenMiddleware, type AdminEnv } from './auth.ts';
 import { serveSpa } from './spa.ts';
 
-/** Strict CSP; frames only from the content origin (live preview and quick look, design 14). */
+/** Strict CSP; frames from the content origin and sandboxed, authenticated theme previews on this origin. */
 export const adminCsp = (contentOrigin: string) =>
-  `default-src 'self'; img-src 'self' data:; style-src 'self'; frame-src ${contentOrigin}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`;
+  `default-src 'self'; img-src 'self' data:; style-src 'self'; frame-src 'self' ${contentOrigin}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`;
 
 export interface AdminDeps { db: Db; cfg: Config; keys: Keys; loginLimiter: RateLimiter; webDist?: string; now?: () => number }
 
@@ -25,13 +26,23 @@ export function createAdminApp(deps: AdminDeps): Hono<AdminEnv> {
 
   app.use('*', async (c, next) => {
     await next();
-    c.res.headers.set('Content-Security-Policy', csp);
+    const themePreview = /^\/api\/themes\/preview\/[A-Za-z0-9_-]+$/.test(c.req.path);
+    c.res.headers.set('Content-Security-Policy', themePreview ? "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'self' data:; sandbox; frame-ancestors 'self'; base-uri 'none'; form-action 'none'" : csp);
+    if (/^\/api\/artifacts\/[^/]+(?:\/versions\/[^/]+)?\/thumbnail$/.test(c.req.path) && c.res.headers.get('Content-Type') === 'image/svg+xml') {
+      // Generated SVG excerpts embed only validated raster logos and local font bytes.
+      c.res.headers.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; sandbox; frame-ancestors 'none'; base-uri 'none'");
+    }
     c.res.headers.set('X-Content-Type-Options', 'nosniff');
     c.res.headers.set('Referrer-Policy', 'same-origin');
-    c.res.headers.set('X-Frame-Options', 'DENY');
+    c.res.headers.set('X-Frame-Options', themePreview ? 'SAMEORIGIN' : 'DENY');
   });
 
   registerFavicon(app);
+  app.get('/_fonts/:file', c => {
+    const data = fontFile(c.req.param('file'));
+    if (!data) throw new HttpError(404, 'unknown_route');
+    return c.body(new Uint8Array(data), 200, { 'Content-Type': 'font/woff2', 'Cache-Control': 'public, max-age=604800', 'Access-Control-Allow-Origin': '*' });
+  });
 
   app.use('/api/*', tokenMiddleware(cfg, loginLimiter), originGuard(cfg), sessionMiddleware(db));
 

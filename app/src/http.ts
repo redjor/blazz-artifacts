@@ -2,7 +2,7 @@ import type { Context } from 'hono';
 import { errorMessage, type ErrorCode, type ErrorParams } from './errors.ts';
 
 export class HttpError extends Error {
-  status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 429;
+  status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 429 | 503;
   code: ErrorCode;
   params?: ErrorParams;
   constructor(status: HttpError['status'], code: ErrorCode, params?: ErrorParams) {

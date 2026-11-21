@@ -1,3 +1,9 @@
+import { googleFontCatalog, prepareGoogleFont } from '../google-fonts.ts';
+import { themeDto } from '../themes.ts';
+import { renderThemeThumbnail, thumbnailTheme } from '../theme-thumbnail.ts';
+import { join } from 'node:path';
+import { bodyLimit } from 'hono/body-limit';
+import { deleteTheme, getTheme, listThemes, parseTheme, parseThemeId, resolveTheme, saveTheme } from '../themes.ts';
 import { readFile, rm } from 'node:fs/promises';
 import { Hono, type Context } from 'hono';
 import type { Config } from '../config.ts';
@@ -11,7 +17,7 @@ import type { ErrorCode } from '../errors.ts';
 import { ancestors, canReparent, children, setChildrenOrder, setParent } from '../folder-tree.ts';
 import { staticLocale } from '../i18n.ts';
 import { newId } from '../ids.ts';
-import { ingestFile, stripExtension, type UploadedFile } from '../ingest/ingest.ts';
+import { ingestFile, renderSourcePage, stripExtension, type UploadedFile } from '../ingest/ingest.ts';
 import {
   activateVersion, bumpEpoch, bumpProjectEpoch, deleteArtifact, deleteProject, getArtifact, getArtifactBySlug, getProject, getTrashedArtifact, getVersion, insertArtifactWithVersion,
   listFolderArtifacts, listFolderLinks, listFolders, listVersions, projectExists, recentProjectArtifacts, renameProject, restoreVersion, revokeFolderLink, setVersionMessage, setProjectOrder,
@@ -179,26 +185,36 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
   // Thumbnail cache token: version + upload date (a regenerated thumbnail changes URL and ETag).
   const thumbStamp = (v: Version) => `${v.id}.${Date.parse(v.thumb_at ?? '').toString(36)}`;
   const enc = encodeURIComponent;
+  const thumbnailUrl = (artifactId: string, v: Version | undefined, pinned = false) =>
+    v && (v.thumb_type || thumbnailTheme(v)) ? `/api/artifacts/${enc(artifactId)}${pinned ? `/versions/${enc(v.id)}` : ''}/thumbnail?v=${v.thumb_type ? thumbStamp(v) : `${v.id}.theme1`}` : null;
 
   const artifactDto = (art: Artifact) => {
     const v = art.current_version_id ? getVersion(db, art.current_version_id) : undefined;
     return {
       id: art.id, slug: art.slug, title: art.title, description: art.description, kind: art.kind, visibility: art.visibility,
       hasCode: !!art.code_hash, memoryStorage: art.memory_storage === 1, createdAt: art.created_at, updatedAt: art.updated_at,
-      project: art.project, tags: getTags(db, art.id),
+      project: art.project, themeId: art.theme_id, effectiveThemeId: resolveTheme(db, art.theme_id, art.project)?.id ?? null, tags: getTags(db, art.id),
       // Visibility of the project's folder (“shared through the folder” when not private); null without a project.
       folderVisibility: art.project === null ? null : (getProject(db, art.project)?.visibility ?? 'private'),
       url: `${cfg.publicContentUrl}/a/${art.slug}`, activeLinkUrl: activeLinkUrl(art),
       pinned: art.pinned_at !== null, pinnedAt: art.pinned_at, views: viewTotals(db, art.id, nowMs()),
       version: v ? { id: v.id, number: v.number, message: v.message, originalName: v.original_name, sizeBytes: v.size_bytes, fileCount: v.file_count, createdAt: v.created_at } : null,
       preview: previewOf(art.id, art.kind, v),
-      thumbnailUrl: v?.thumb_type ? `/api/artifacts/${enc(art.id)}/thumbnail?v=${thumbStamp(v)}` : null,
+      thumbnailUrl: thumbnailUrl(art.id, v),
     };
   };
 
   // Image served as is from the admin origin (img-src 'self'); never by the content server.
   const serveThumb = async (c: Context, art: Artifact, v: Version | undefined) => {
-    if (!v?.thumb_type || v.artifact_id !== art.id) throw new HttpError(404, 'no_thumbnail');
+    if (!v || v.artifact_id !== art.id) throw new HttpError(404, 'no_thumbnail');
+    if (!v.thumb_type) {
+      const theme = thumbnailTheme(v);
+      if (!theme) throw new HttpError(404, 'no_thumbnail');
+      const etag = `"${v.id}.theme1"`;
+      const headers = { 'Cache-Control': 'private, max-age=86400', ETag: etag, 'Content-Type': 'image/svg+xml' };
+      if (c.req.header('if-none-match') === etag) return c.body(null, 304, headers);
+      return c.body(renderThemeThumbnail(theme, previewOf(art.id, 'markdown', v), stripExtension(v.original_name)), 200, headers);
+    }
     const etag = `"${thumbStamp(v)}"`;
     const headers = { 'Cache-Control': 'private, max-age=86400', ETag: etag };
     if (c.req.header('if-none-match') === etag) return c.body(null, 304, headers);
@@ -248,6 +264,82 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
 
   api.get('/tags', (c) => c.json(listTagCounts(db)));
 
+  type PreviewBinding = { artifactId: string; versionId: string; themeId: string | null; snapshot: string; title: string };
+  const readThemeBody = async (c: Context): Promise<Record<string, unknown>> => {
+    const body: unknown = await c.req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'invalid_theme');
+    return body as Record<string, unknown>;
+  };
+  const themePreviews = new Map<string, { html: string; expires: number; binding?: PreviewBinding }>();
+  const previewResponse = (html: string, binding?: PreviewBinding) => {
+    for (const [id, item] of themePreviews) if (item.expires <= nowMs()) themePreviews.delete(id);
+    while (themePreviews.size >= 20) themePreviews.delete(themePreviews.keys().next().value!);
+    const id = randomToken(24);
+    themePreviews.set(id, { html, expires: nowMs() + 600000, binding });
+    return { url: `/api/themes/preview/${id}`, previewToken: id };
+  };
+  api.use('/themes/*', bodyLimit({ maxSize: 750000, onError: () => { throw new HttpError(413, 'payload_too_large'); } }));
+  api.use('/themes', bodyLimit({ maxSize: 750000, onError: () => { throw new HttpError(413, 'payload_too_large'); } }));
+  const prepareTheme = async (body: unknown) => { const theme = parseTheme(body); return { ...theme, fontData: await prepareGoogleFont(theme.font, cfg.dataDir) }; };
+  api.get('/themes/fonts', c => c.json(googleFontCatalog));
+  api.get('/themes', c => c.json(listThemes(db).map(themeDto)));
+  api.post('/themes', async c => c.json(themeDto(saveTheme(db, { ...await prepareTheme(await readThemeBody(c)), id: newId() })), 201));
+  api.put('/themes/:id', async c => {
+    const id = c.req.param('id');
+    if (!getTheme(db, id)) throw new HttpError(404, 'theme_not_found');
+    return c.json(themeDto(saveTheme(db, { ...await prepareTheme(await readThemeBody(c)), id })));
+  });
+  api.delete('/themes/:id', c => { deleteTheme(db, c.req.param('id')); return c.json({ ok: true }); });
+  api.post('/themes/preview', async c => {
+    const theme = { ...await prepareTheme(await readThemeBody(c)), id: 'preview' };
+    return c.json(previewResponse(renderSourcePage('markdown', '# Project overview\n\nA clear introduction to your document.\n\n## Objectives\n\n- Consistent client branding\n- Readable reports and documentation\n\n## Progress\n\n| Milestone | Status |\n| --- | --- |\n| Discovery | Complete |\n| Delivery | In progress |\n\n> A shared direction for the next stage.\n\nVisit [the project](https://example.com).', theme.name, staticLocale(cfg.locale), theme)));
+  });
+  api.get('/themes/preview/:token', c => {
+    const item = themePreviews.get(c.req.param('token'));
+    if (!item || item.expires <= nowMs()) throw new HttpError(404, 'no_content');
+    c.header('Cache-Control', 'no-store');
+    return c.html(item.html);
+  });
+  const themeActionLimit = bodyLimit({ maxSize: 4096, onError: () => { throw new HttpError(413, 'payload_too_large'); } });
+  api.use('/artifacts/:id/theme-preview', themeActionLimit);
+  api.use('/artifacts/:id/apply-theme', themeActionLimit);
+  api.post('/artifacts/:id/theme-preview', async c => {
+    const art = mustGet(c.req.param('id'));
+    if (art.kind !== 'markdown') throw new HttpError(400, 'theme_markdown_only');
+    const body = await readThemeBody(c);
+    const themeId = parseThemeId(db, body.themeId);
+    const theme = resolveTheme(db, themeId, art.project);
+    const v = art.current_version_id ? getVersion(db, art.current_version_id) : null;
+    if (!v) throw new HttpError(404, 'no_content');
+    const source = await readFile(join(versionDir(cfg.dataDir, art.id, v.id), 'source.md'), 'utf8');
+    return c.json(previewResponse(renderSourcePage('markdown', source, art.title, staticLocale(cfg.locale), theme), { artifactId: art.id, versionId: v.id, themeId, snapshot: JSON.stringify(theme), title: art.title }));
+  });
+  api.post('/artifacts/:id/apply-theme', async c => {
+    const art = mustGet(c.req.param('id'));
+    if (art.kind !== 'markdown') throw new HttpError(400, 'theme_markdown_only');
+    const body = await readThemeBody(c);
+    if (typeof body.versionId !== 'string' || body.versionId !== art.current_version_id) throw new HttpError(409, 'version_changed');
+    const themeId = parseThemeId(db, body.themeId);
+    const theme = resolveTheme(db, themeId, art.project);
+    if (typeof body.previewToken !== 'string') throw new HttpError(409, 'version_changed');
+    const preview = themePreviews.get(body.previewToken);
+    const binding = preview?.binding;
+    if (!preview || preview.expires <= nowMs() || !binding || binding.artifactId !== art.id || binding.versionId !== body.versionId || binding.themeId !== themeId || binding.snapshot !== JSON.stringify(theme) || binding.title !== art.title) throw new HttpError(409, 'version_changed');
+    const v = getVersion(db, body.versionId)!;
+    const versionId = newId(), dir = versionDir(cfg.dataDir, art.id, versionId);
+    try {
+      const r = await ingestFile({ tmpPath: join(versionDir(cfg.dataDir, art.id, v.id), 'source.md'), originalName: v.original_name, size: v.size_bytes }, dir, limits, staticLocale(cfg.locale), theme, art.title);
+      const current = mustGet(art.id);
+      if (current.current_version_id !== v.id || current.title !== art.title || JSON.stringify(resolveTheme(db, themeId, current.project)) !== binding.snapshot) throw new HttpError(409, 'version_changed');
+      // No await between the compare and activation: both are synchronous SQLite writes.
+      activateVersion(db, art.id, { id: versionId, entry_path: r.entryPath, original_name: v.original_name, size_bytes: r.sizeBytes, file_count: r.fileCount, theme_snapshot: theme ? JSON.stringify(theme) : null }, 'markdown', getTheme(db, themeId ?? '') ? themeId : null, () => indexArtifact(db, cfg.dataDir, mustGet(art.id)));
+      themePreviews.delete(body.previewToken);
+    } catch (e) { await rm(dir, { recursive: true, force: true }); throw e; }
+    await pruneVersions(db, cfg.dataDir, art.id);
+    return c.json(artifactDto(mustGet(art.id)));
+  });
+
+
   api.post('/artifacts', (c) =>
     withUpload(c, async (fields, file) => {
       const title = parseTitle(fields.title?.trim() || stripExtension(file.originalName));
@@ -262,12 +354,13 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
       const id = newId();
       const versionId = newId();
       const dir = versionDir(cfg.dataDir, id, versionId);
-      const r = await ingestFile(file, dir, limits, staticLocale(cfg.locale));
+      const theme = resolveTheme(db, null, project);
+      const r = await ingestFile(file, dir, limits, staticLocale(cfg.locale), theme);
       try {
         const art = insertArtifactWithVersion(
           db,
           { id, slug, title, description, kind: r.kind, visibility, code_hash: codeHash, memory_storage: ['true', '1'].includes(fields.memoryStorage ?? '') ? 1 : 0, project, tags },
-          { id: versionId, entry_path: r.entryPath, original_name: file.originalName, size_bytes: r.sizeBytes, file_count: r.fileCount, message },
+          { id: versionId, entry_path: r.entryPath, original_name: file.originalName, size_bytes: r.sizeBytes, file_count: r.fileCount, message, theme_snapshot: r.kind === 'markdown' && theme ? JSON.stringify(theme) : null },
         );
         indexArtifact(db, cfg.dataDir, art);
         return c.json(artifactDto(art), 201);
@@ -294,6 +387,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
       return c.json(artifactDto(setPinned(db, art.id, pinned)));
     }
     const patch: ArtifactPatch = {};
+    if (body.themeId !== undefined) patch.theme_id = parseThemeId(db, body.themeId);
     let bump = false;
     if (body.title !== undefined) patch.title = parseTitle(body.title);
     if (body.description !== undefined) patch.description = parseOptionalText(body.description, DESCRIPTION_MAX, 'description');
@@ -337,8 +431,9 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
       const art = mustGet(c.req.param('id'));
       const message = parseVersionMessage(fields.message);
       const versionId = newId();
-      const r = await ingestFile(file, versionDir(cfg.dataDir, art.id, versionId), limits, staticLocale(cfg.locale));
-      activateVersion(db, art.id, { id: versionId, entry_path: r.entryPath, original_name: file.originalName, size_bytes: r.sizeBytes, file_count: r.fileCount, message }, r.kind);
+      const theme = resolveTheme(db, art.theme_id, art.project);
+      const r = await ingestFile(file, versionDir(cfg.dataDir, art.id, versionId), limits, staticLocale(cfg.locale), theme);
+      activateVersion(db, art.id, { id: versionId, entry_path: r.entryPath, original_name: file.originalName, size_bytes: r.sizeBytes, file_count: r.fileCount, message, theme_snapshot: r.kind === 'markdown' && theme ? JSON.stringify(theme) : null }, r.kind);
       indexArtifact(db, cfg.dataDir, mustGet(art.id));
       await pruneVersions(db, cfg.dataDir, art.id);
       return c.json(artifactDto(mustGet(art.id)));
@@ -514,7 +609,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
   const versionDto = (art: Artifact, v: Version) => ({
     id: v.id, number: v.number, kind: v.kind ?? art.kind, message: v.message, originalName: v.original_name, sizeBytes: v.size_bytes,
     fileCount: v.file_count, createdAt: v.created_at, current: v.id === art.current_version_id,
-    thumbnailUrl: v.thumb_type ? `/api/artifacts/${enc(art.id)}/versions/${enc(v.id)}/thumbnail?v=${thumbStamp(v)}` : null,
+    thumbnailUrl: thumbnailUrl(art.id, v, true),
   });
 
   api.get('/artifacts/:id/versions', (c) => {
@@ -615,7 +710,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     setParent(db, name, parent);
   };
   const folderSheet = (name: string): Project =>
-    getProject(db, name) ?? { name, title: null, description: null, visibility: 'private', code_hash: null, access_epoch: 1, created_at: '', updated_at: '', salt: '', parent_name: null, position: null };
+    getProject(db, name) ?? { name, title: null, description: null, visibility: 'private', code_hash: null, access_epoch: 1, created_at: '', updated_at: '', salt: '', parent_name: null, position: null, theme_id: null };
 
   const folderActiveLinkUrl = (p: Project): string | null => {
     if (p.visibility !== 'link') return null;
@@ -631,7 +726,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     const p = folderSheet(name);
     const arts = listFolderArtifacts(db, name);
     return {
-      name, title: p.title, description: p.description, visibility: p.visibility, hasCode: !!p.code_hash, hasSheet: !!p.created_at,
+      name, themeId: p.theme_id, effectiveThemeId: resolveTheme(db, null, name)?.id ?? null, title: p.title, description: p.description, visibility: p.visibility, hasCode: !!p.code_hash, hasSheet: !!p.created_at,
       createdAt: p.created_at || null, updatedAt: p.updated_at || null,
       url: `${cfg.publicContentUrl}/d/${name}`, activeLinkUrl: folderActiveLinkUrl(p),
       count: arts.length, privateCount: arts.filter((a) => a.visibility === 'private').length,
@@ -639,7 +734,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
         const v = a.current_version_id ? getVersion(db, a.current_version_id) : undefined;
         return {
           id: a.id, slug: a.slug, title: a.title, kind: a.kind, visibility: a.visibility, position: a.project_position, updatedAt: a.updated_at,
-          versionNumber: v?.number ?? null, thumbnailUrl: v?.thumb_type ? `/api/artifacts/${enc(a.id)}/thumbnail?v=${thumbStamp(v)}` : null,
+          versionNumber: v?.number ?? null, thumbnailUrl: thumbnailUrl(a.id, v),
         };
       }),
       links: listFolderLinks(db, name).map(linkDto),
@@ -659,11 +754,11 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
       const sheet = f.name === null ? undefined : getProject(db, f.name);
       const latest = [sheet?.updated_at, recent[0]?.updated_at].filter((x): x is string => !!x).sort().at(-1) ?? null;
       return {
-        ...f, latestUpdatedAt: latest,
+        ...f, themeId: sheet?.theme_id ?? null, effectiveThemeId: resolveTheme(db, null, f.name)?.id ?? null, latestUpdatedAt: latest,
         childCount: f.name === null ? 0 : children(db, f.name).length,
         recent: recent.map((a) => {
           const v = a.current_version_id ? getVersion(db, a.current_version_id) : undefined;
-          return { id: a.id, kind: a.kind, title: a.title, thumbnailUrl: v?.thumb_type ? `/api/artifacts/${enc(a.id)}/thumbnail?v=${thumbStamp(v)}` : null };
+          return { id: a.id, kind: a.kind, title: a.title, thumbnailUrl: thumbnailUrl(a.id, v) };
         }),
         url: f.name === null ? null : `${cfg.publicContentUrl}/d/${f.name}`,
         activeLinkUrl: f.name === null ? null : folderActiveLinkUrl(folderSheet(f.name)),
@@ -676,6 +771,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     const name = typeof body.name === 'string' ? normalizeLabel(body.name) : null;
     if (!name) throw new HttpError(400, 'invalid_folder_name');
     const patch: ProjectPatch = {};
+    if (body.themeId !== undefined) patch.theme_id = parseThemeId(db, body.themeId);
     if (body.title !== undefined) patch.title = parseOptionalText(body.title, 120, 'title');
     if (body.description !== undefined) patch.description = parseOptionalText(body.description, DESCRIPTION_MAX, 'description');
     const parent = parseParent(body.parent);
@@ -705,6 +801,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     const current = folderSheet(name);
     const parent = parseParent(body.parent);
     const patch: ProjectPatch = {};
+    if (body.themeId !== undefined) patch.theme_id = parseThemeId(db, body.themeId);
     let bump = false;
     if (body.title !== undefined) patch.title = parseOptionalText(body.title, 120, 'title');
     if (body.description !== undefined) patch.description = parseOptionalText(body.description, DESCRIPTION_MAX, 'description');

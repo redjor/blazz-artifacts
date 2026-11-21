@@ -1,6 +1,12 @@
 // API errors: a stable machine `code` plus an English message. The admin SPA maps each code to
 // localised text (web/src/i18n) and falls back to the message. `{name}` placeholders are filled from `params`.
 export const ERRORS = {
+  font_unavailable: 'The selected font could not be downloaded. Please try again.',
+  invalid_theme: 'Invalid theme: check text, colors, layout and embedded raster logo',
+  theme_not_found: 'Theme not found',
+  theme_markdown_only: 'Themes can only be applied to Markdown documents',
+  version_changed: 'The current version changed: preview again before applying',
+
   payload_too_large: 'Request too large',
   too_many_attempts: 'Too many attempts. Try again in 15 minutes.',
   wrong_password: 'Incorrect password',

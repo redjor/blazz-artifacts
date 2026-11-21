@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { api, copyText, openFolderPreview } from './api.ts';
 import { ThumbImage, useThumbnail } from './ArtifactCard.tsx';
 import { EMPTY_LINK, field, ghost, iconButton, LinkCreateForm, linkExpiresAt, LinkRow, primary, RevivedLinksNote, Section, type LinkForm } from './ArtifactPanel.tsx';
+import { ThemeSection } from './Themes.tsx';
 import { Audience } from './Audience.tsx';
 import { confirmExposure, copyFolderLink, shareFolderFor7Days } from './folderLinks.ts';
 import { formatDate, kindLabel, modifiedText, normalizeLabel, visibilityLabel } from './format.ts';
@@ -518,6 +519,9 @@ export function FolderDrawer({ name, summary, folders, initialTab = 'info', onCl
               </div>
             </form>
           </Section>
+          <ThemeSection key={`${f.name}:${f.themeId ?? ''}`} themeId={f.themeId ?? null} effectiveThemeId={f.effectiveThemeId ?? null}
+            onSave={async (themeId) => { await api.updateFolder(f.name, { themeId }); await refresh(); onChanged(); }}
+            onChanged={async () => { await refresh(); onChanged(); }} />
           {f.hasSheet && (
             <Section title={t('common.dangerZone')} description={f.count === 0 ? t('folder.dangerEmpty') : t('folder.dangerFull')}>
               <button type="button" onClick={() => void removeSheet()} className="rounded-lg border border-danger/40 px-3 py-2 text-sm text-danger hover:bg-danger/10">{f.count === 0 ? t('folder.delete') : t('folder.deleteSheet')}</button>
