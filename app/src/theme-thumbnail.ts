@@ -52,7 +52,7 @@ export function renderThemeThumbnail(theme: Theme, preview: Preview, fallbackTit
 <style>${embeddedFonts()}${googleFontCss(theme.font, theme.fontData)}text{font-family:${font}}</style>
 <rect width="960" height="600" fill="${bg}"/>
 ${theme.logoDataUrl ? `<image href="${escape(theme.logoDataUrl)}" x="${margin}" y="42" width="58" height="58" preserveAspectRatio="xMinYMid meet"/>` : ''}
-<text x="${margin + (theme.logoDataUrl ? 76 : 0)}" y="78" font-size="22" font-weight="650" fill="${color}">${escape(lines(theme.clientName, 42, 1)[0] ?? '')}</text>
+${!theme.logoDataUrl && theme.clientName ? `<text x="${margin}" y="78" font-size="22" font-weight="650" fill="${color}">${escape(lines(theme.clientName, 42, 1)[0] ?? '')}</text>` : ''}
 <path d="M${margin} 120H${960 - margin}" stroke="#e2dcd3"/>
 ${theme.header ? `<text x="${margin}" y="149" font-size="17" fill="#57534e">${escape(lines(theme.header, 70, 1)[0] ?? '')}</text>` : ''}
 <text fill="${color}" font-size="${theme.preset === 'editorial' ? 46 : 42}" font-weight="700" text-anchor="${centered ? 'middle' : 'start'}">${heading.map((s, i) => `<tspan x="${x}" y="${202 + i * 50}">${escape(s)}</tspan>`).join('')}</text>

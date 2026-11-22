@@ -21,6 +21,7 @@ export interface FramePageInput {
   src: string;
   /** Signed path of the original file and its download name (Markdown, JSON, PDF), or null. */
   original: { href: string; name: string } | null;
+  printHref?: string | null;
   /** Screen-size switch: the address of this page without `?w=` and the simulated screen; null: no switch. */
   sizes?: { base: string; screen: Screen | null } | null;
   /** Previous and next artifact of the folder it was opened through; null outside a folder. */
@@ -51,6 +52,7 @@ ${BAR_CSS}
 .stage .artifact{flex:none;max-width:100%;min-height:0;border:1px solid var(--rule);border-radius:18px;
 box-shadow:0 1px 2px oklch(0.35 0.03 60 / 0.12),0 12px 32px -8px oklch(0.35 0.03 60 / 0.22)}
 ${(Object.keys(SCREENS) as Screen[]).map((s) => `.size-${s}{width:${SCREENS[s].w}px;height:min(${SCREENS[s].h}px,calc(100dvh - ${BAR_HEIGHT + 2 * STAGE_PAD}px))}`).join('\n')}
+.export-menu{position:relative}.export-menu summary{list-style:none}.export-menu summary::-webkit-details-marker{display:none}.export-options{position:absolute;right:0;top:100%;min-width:230px;padding:6px;background:var(--bg);border:1px solid var(--rule);border-radius:12px;box-shadow:0 8px 24px #0002}.export-options a{display:flex;padding:12px;color:var(--fg);text-decoration:none;border-radius:8px;white-space:nowrap}.export-options a:hover{background:var(--band)}.export-options a:focus-visible{outline:2px solid var(--link)}
 .sizes{display:flex;align-items:center;gap:2px;padding:2px;margin-right:6px;border-radius:999px;background:var(--band)}
 .size-btn{display:grid;place-items:center;width:34px;height:30px;border-radius:999px;color:var(--muted);text-decoration:none;
 transition:background-color 150ms ease-out,color 150ms ease-out}
@@ -96,7 +98,7 @@ export function renderFramePage(o: FramePageInput, locale: Locale): string {
   const actions = [
     o.steps ? renderSteps(o.steps, locale) : '',
     o.sizes ? renderSizes(o.sizes, locale) : '',
-    o.original ? barLink({ href: o.original.href, label: tr(locale, 'original'), icon: ICON_DOWNLOAD, download: o.original.name, title: tr(locale, 'bar.downloadTitle') }) : '',
+    o.original || o.printHref ? `<details class="export-menu"><summary class="bar-btn">${svgIcon(ICON_DOWNLOAD)}<span>${tr(locale, 'bar.export')}</span><span aria-hidden="true">⌄</span></summary><div class="export-options">${o.original ? `<a class="bar-btn" href="${escapeHtml(o.original.href)}" download="${escapeHtml(o.original.name)}">${tr(locale, 'bar.downloadTitle')}</a>` : ''}${o.printHref ? `<a href="${escapeHtml(o.printHref)}" target="_blank" rel="noopener">${tr(locale, 'bar.exportPdf')}</a>` : ''}</div></details>` : '',
     barLink({ href: o.src, label: tr(locale, 'bar.openAlone'), icon: ICON_OPEN, title: tr(locale, 'bar.openAloneTitle') }),
   ].join('');
   const screen = o.sizes?.screen ?? null;

@@ -1,3 +1,4 @@
+import { PRINT_CSP, printDocument } from './print.ts';
 import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
@@ -129,6 +130,13 @@ export function createContentApp(deps: ContentDeps): Hono {
       'X-Frame-Options': 'SAMEORIGIN',
     });
     if (attachment) headers.set('Content-Disposition', 'attachment');
+    if (c.req.query('print') === '1' && (kind === 'markdown' || kind === 'json') && rel === version.entry_path) {
+      const body = Buffer.from(printDocument(await readFile(full, 'utf8')), 'utf8');
+      headers.set('Content-Length', String(body.length));
+      headers.set('Content-Security-Policy', PRINT_CSP);
+      headers.set('Cache-Control', 'private, no-store');
+      return new Response(body, { status: 200, headers });
+    }
     // Simulated storage: only HTML pages of an html/site artifact, up to 2 MiB.
     if (art.memory_storage === 1 && (kind === 'html' || kind === 'site') && type.startsWith('text/html') && info.size <= SHIM_MAX_BYTES) {
       const body = Buffer.from(injectShim(await readFile(full, 'utf8')), 'utf8');
@@ -164,6 +172,7 @@ export function createContentApp(deps: ContentDeps): Hono {
     const screen = sized ? parseScreen(c.req.query('w')) : null;
     const page = renderFramePage({
       title: art.title, version: v.number, versionMessage: v.message, path, src: base + encodePath(v.entry_path),
+      printHref: kind === 'markdown' || kind === 'json' ? base + encodePath(v.entry_path) + '?print=1' : null,
       original: originalFile ? { href: base + encodePath(originalFile), name: v.original_name } : null,
       sizes: sized ? { base: new URL(c.req.url).pathname, screen } : null,
       steps: folder ? folderSteps(folder, art, screen) : null,

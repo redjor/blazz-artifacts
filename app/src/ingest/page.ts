@@ -66,6 +66,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font:18px/1.7 ${SERIF};
 text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
 .theme-toggle{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
 .page{max-width:68ch;margin:0 auto;padding:20px 24px 112px}
+.reader-top{display:flex;align-items:center;justify-content:space-between;gap:16px}.reader-top .toolbar{margin-left:auto;flex-wrap:wrap}
 .toolbar{display:flex;justify-content:flex-end;align-items:center;gap:8px;font:14px/1 ${SANS}}
 .toolbar a,.theme-btn{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 12px;border-radius:999px;
 color:var(--muted);text-decoration:none;cursor:pointer;user-select:none;transition:background-color 150ms ease-out,color 150ms ease-out}
@@ -239,8 +240,8 @@ export function renderArticle(o: { theme?: Theme | null; fallbackTitle: string; 
 <body>
 <input type="checkbox" id="theme-toggle" class="theme-toggle" aria-label="${tr(locale, 'theme.toggle')}">
 <div class="page">
-<nav class="toolbar">${original}<label for="theme-toggle" class="theme-btn" aria-hidden="true"><span class="to-dark">◐ ${tr(locale, 'theme.dark')}</span><span class="to-light">◑ ${tr(locale, 'theme.light')}</span></label></nav>
-${o.theme ? themeBrand(o.theme) : ''}
+<div class="reader-top">${o.theme ? themeBrand(o.theme) : ''}<nav class="toolbar">${original}<label for="theme-toggle" class="theme-btn" aria-hidden="true"><span class="to-dark">◐ ${tr(locale, 'theme.dark')}</span><span class="to-light">◑ ${tr(locale, 'theme.light')}</span></label></nav></div>
+${o.theme?.header ? `<p class="client-header">${escapeHtml(o.theme.header)}</p>` : ''}
 <header class="doc-head"><h1 class="doc-title">${titleHtml}</h1></header>
 <article class="prose">${body}</article>
 ${o.theme?.footer ? `<footer class="client-footer">${escapeHtml(o.theme.footer)}</footer>` : ''}
@@ -270,7 +271,7 @@ export function renderDocument(o: { title: string; body: string; originalHref?: 
 }
 
 function themeBrand(t: Theme): string {
-  return `<div class="client-brand">${t.logoDataUrl ? `<img src="${escapeHtml(t.logoDataUrl)}" alt="${escapeHtml(t.clientName)}">` : ''}${t.clientName ? `<strong>${escapeHtml(t.clientName)}</strong>` : ''}${t.header ? `<p>${escapeHtml(t.header)}</p>` : ''}</div>`;
+  return `<div class="client-brand">${t.logoDataUrl ? `<img src="${escapeHtml(t.logoDataUrl)}" alt="${escapeHtml(t.clientName)}">` : ''}${!t.logoDataUrl && t.clientName ? `<strong>${escapeHtml(t.clientName)}</strong>` : ''}</div>`;
 }
 function themeCss(t: Theme): string {
   const font = themeFontFamily(t.font);
@@ -278,7 +279,7 @@ function themeCss(t: Theme): string {
   const layout = { documentation: '.doc-head,.prose h1,.prose h2{text-align:left}.prose h1::after,.prose h2::after{margin-left:0}', report: '.doc-head{padding:40px 0;border-top:4px solid var(--client-primary);border-bottom:1px solid var(--rule)}', editorial: '.doc-title{font-size:clamp(2.5rem,5vw,4rem)}.prose{line-height:1.85}' }[t.preset];
   const light = `--client-title:${accessibleColor(t.primaryColor, '#faf7f2')};--client-link:${accessibleColor(t.accentColor, '#faf7f2')}`;
   const dark = `--client-title:${accessibleColor(t.primaryColor, '#161312')};--client-link:${accessibleColor(t.accentColor, '#161312')}`;
-  return `${googleFontCss(t.font, t.fontData)}:root{${light}}html:has(#theme-toggle:checked){${dark}}@media(prefers-color-scheme:dark){:root{${dark}}html:has(#theme-toggle:checked){${light}}}:root{--client-primary:${t.primaryColor};--client-accent:${t.accentColor}}body{font-family:${font}}.page{max-width:${width}}.doc-title{color:var(--client-title)}.prose a{color:var(--client-link)}.prose h1::after,.prose h2::after{background:var(--client-accent)}.client-brand{margin-top:32px;padding-bottom:24px;border-bottom:1px solid var(--rule);white-space:pre-wrap}.client-brand img{display:block;max-width:180px;max-height:80px;object-fit:contain;margin-bottom:16px}.client-brand strong{display:block}.client-brand p{margin-bottom:0}.client-footer{margin-top:48px;padding-top:24px;border-top:1px solid var(--rule);font-size:14px;color:var(--muted);white-space:pre-wrap}${layout}@media print{.doc-title{color:#000}.prose a{color:#000}}`;
+  return `${googleFontCss(t.font, t.fontData)}:root{${light}}html:has(#theme-toggle:checked){${dark}}@media(prefers-color-scheme:dark){:root{${dark}}html:has(#theme-toggle:checked){${light}}}:root{--client-primary:${t.primaryColor};--client-accent:${t.accentColor}}body{font-family:${font}}.page{max-width:${width}}.doc-title{color:var(--client-title)}.prose a{color:var(--client-link)}.prose h1::after,.prose h2::after{background:var(--client-accent)}.client-brand{flex-shrink:0;white-space:pre-wrap}.client-brand img{display:block;width:auto;height:40px;max-width:120px;object-fit:contain}.client-header{white-space:pre-wrap;margin-top:24px}.client-brand strong{display:block}.client-brand p{margin-bottom:0}.client-footer{margin-top:48px;padding-top:24px;border-top:1px solid var(--rule);font-size:14px;color:var(--muted);white-space:pre-wrap}${layout}@media print{.doc-title{color:#000}.prose a{color:#000}}`;
 }
 
 /** Mix toward the contrasting endpoint until text reaches WCAG AA on its reading palette. */

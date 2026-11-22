@@ -190,3 +190,23 @@ test('barre : précédent et suivant dans l’ordre du dossier, en gardant la ta
   const alone = await (await nav(h, '/a/un')).text();
   assert.equal(alone.includes('class="bar-btn step"'), false, 'not opened through the folder: no stepping');
 });
+
+
+test('export menu opens a signed print document with only the fixed script allowed', async () => {
+  const h = await setup({ artifactBar: true });
+  await seedArtifact(h, { slug: 'export', visibility: 'public', kind: 'markdown', files: DOC });
+  const html = await (await nav(h, '/a/export')).text();
+  assert.match(html, /<details class="export-menu">/);
+  const src = iframeSrc(html)!;
+  assert.ok(html.includes(src + '?print=1'));
+  const res = await nav(h, src + '?print=1');
+  assert.equal(res.status, 200);
+  const csp = res.headers.get('content-security-policy')!;
+  assert.match(csp, /sandbox allow-scripts allow-modals/);
+  assert.match(csp, /script-src 'sha256-/);
+  assert.doesNotMatch(csp, /allow-same-origin|unsafe-inline/);
+  assert.match(await res.text(), /window.print\(\)/);
+  const normal = await nav(h, src);
+  assert.doesNotMatch(await normal.text(), /window.print/);
+  assert.equal((await nav(h, src.replace(/~[^/]+/, '~invalid') + '?print=1')).status, 404);
+});

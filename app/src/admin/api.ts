@@ -186,7 +186,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
   const thumbStamp = (v: Version) => `${v.id}.${Date.parse(v.thumb_at ?? '').toString(36)}`;
   const enc = encodeURIComponent;
   const thumbnailUrl = (artifactId: string, v: Version | undefined, pinned = false) =>
-    v && (v.thumb_type || thumbnailTheme(v)) ? `/api/artifacts/${enc(artifactId)}${pinned ? `/versions/${enc(v.id)}` : ''}/thumbnail?v=${v.thumb_type ? thumbStamp(v) : `${v.id}.theme1`}` : null;
+    v && (v.thumb_type || thumbnailTheme(v)) ? `/api/artifacts/${enc(artifactId)}${pinned ? `/versions/${enc(v.id)}` : ''}/thumbnail?v=${v.thumb_type ? thumbStamp(v) : `${v.id}.theme2`}` : null;
 
   const artifactDto = (art: Artifact) => {
     const v = art.current_version_id ? getVersion(db, art.current_version_id) : undefined;
@@ -210,7 +210,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     if (!v.thumb_type) {
       const theme = thumbnailTheme(v);
       if (!theme) throw new HttpError(404, 'no_thumbnail');
-      const etag = `"${v.id}.theme1"`;
+      const etag = `"${v.id}.theme2"`;
       const headers = { 'Cache-Control': 'private, max-age=86400', ETag: etag, 'Content-Type': 'image/svg+xml' };
       if (c.req.header('if-none-match') === etag) return c.body(null, 304, headers);
       return c.body(renderThemeThumbnail(theme, previewOf(art.id, 'markdown', v), stripExtension(v.original_name)), 200, headers);
