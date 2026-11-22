@@ -76,6 +76,10 @@ test('description : sous le titre des cartes de la page dossier, et dans les ape
   const h = await adminSetup();
   await h.publish('accueil.html', '<p>Premier paragraphe</p>', { project: 'borne', visibility: 'public', description: 'Écran <d’accueil>' });
   await h.publish('nu.html', '<p>Texte de la page</p>', { project: 'borne', visibility: 'public' });
+  for (const slug of ['accueil','nu']) {
+    const a = getArtifactBySlug(h.db,slug)!;
+    assert.equal((await h.call(`/artifacts/${a.id}/publish`, {method:'POST',body:{versionId:a.current_version_id}})).status,200);
+  }
   upsertProject(h.db, 'borne', { visibility: 'public' });
 
   const page = await (await h.content.request('/d/borne', { headers: { 'user-agent': BROWSER } })).text();

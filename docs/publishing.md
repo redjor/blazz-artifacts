@@ -73,3 +73,44 @@ Mockups that call `localStorage` or `sessionStorage` crash in the sandbox. The "
 that replaces both objects when the browser refuses them. Data lives for the tab's lifetime in `window.name`, so it
 survives navigation between the site's pages; any page opened later in the same tab can read it. Do not use it for
 sensitive data.
+
+## Drafts and approval
+
+Uploads now save a working version. Visitors keep seeing the last approved version,
+through the same artifact and folder links. New artifacts are invisible until approved.
+In the artifact panel, preview the working version, then choose **Publish this version**.
+History also allows publishing an older version directly. Restore only changes the
+working version. Publication preserves the artifact's visibility: publishing a private
+artifact does not make it public. Titles, descriptions and access settings remain
+artifact-wide and apply immediately; the approval step applies to file content.
+Existing artifacts retain their current published version when upgrading.
+
+For automation, pass `--publish` to approve the uploaded version, or call
+`POST /api/artifacts/:id/publish` with `{"versionId":"..."}` after review.
+Without `--publish`, the CLI saves a draft. The API returns `publishedVersionId` and
+`publishedVersionNumber`, separately from the working `version`.
+
+## React components
+
+Drop a `.jsx` or `.tsx` file with a default component export, or use the CLI/MCP.
+These are stored as HTML artifacts with the original source and transformed module.
+The server transforms source with esbuild; it does not execute it or read imported
+files. React 19.2.0, ReactDOM and npm imports load through esm.sh in the visitor's
+browser; Tailwind's browser runtime supplies utility classes. Internet access is
+required. Pin npm versions in imports when reproducibility matters.
+Local imports, CSS files, Node built-ins and full projects should be built locally
+and uploaded as ZIP sites. Components retain the opaque-origin content sandbox.
+
+## QR codes and embedding
+
+After publication, open **Share → QR code and embed**. Download SVG or PNG QR codes
+for the current public/code URL or active share link. Codes are generated locally,
+without sending your URL to a QR service. A code-protected link still asks for its code;
+an expiring or revoked share link also stops working when scanned.
+
+Public artifacts additionally offer **Copy iframe code**. The stable `/embed/:slug/`
+URL serves only the approved version and re-checks public visibility on every request.
+Private, code-protected and share-link artifacts cannot be embedded. Changing visibility
+removes access on the next load; it cannot remove content already loaded by a browser.
+
+See [API keys and MCP](api-keys-mcp.md) for named credentials and client configuration.

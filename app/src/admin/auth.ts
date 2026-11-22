@@ -5,30 +5,34 @@ import { randomToken, safeEqual, sha256 } from '../crypto.ts';
 import type { Db } from '../db.ts';
 import { clientIp, HttpError } from '../http.ts';
 import type { RateLimiter } from '../ratelimit.ts';
+import { authenticateApiKey, type ApiScope } from './api-keys.ts';
 import { deleteSession, getSession, insertSession, type Session } from '../repo.ts';
 
 export const SESSION_COOKIE = '__Host-hub_session';
 const SESSION_TTL_S = 7 * 24 * 3600;
 const MUTATIONS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-export type AdminEnv = { Variables: { session: Session | null; viaToken: boolean } };
+export type AdminEnv = { Variables: { session: Session | null; viaToken: boolean; apiScope: ApiScope | null } };
 
 // API token (automation): header authentication, without cookie, Origin or CSRF.
-export function tokenMiddleware(cfg: Config, limiter: RateLimiter): MiddlewareHandler<AdminEnv> {
+export function tokenMiddleware(cfg: Config, limiter: RateLimiter, db: Db, now: () => number = Date.now): MiddlewareHandler<AdminEnv> {
   return async (c, next) => {
+    c.set('apiScope', null);
     const header = c.req.header('authorization');
     if (!header?.startsWith('Bearer ')) {
       c.set('viaToken', false);
       return next();
     }
-    if (!cfg.apiTokenHash) throw new HttpError(401, 'token_disabled');
     const client = clientIp(c);
     if (limiter.isBlocked('token', client)) throw new HttpError(429, 'too_many_attempts');
-    if (!safeEqual(sha256(header.slice(7)), cfg.apiTokenHash)) {
+    const token = header.slice(7);
+    const scope = cfg.apiTokenHash && safeEqual(sha256(token), cfg.apiTokenHash) ? 'full' : authenticateApiKey(db, token, now());
+    if (!scope) {
       limiter.recordFailure('token', client);
-      throw new HttpError(401, 'token_invalid');
+      throw new HttpError(401, !cfg.apiTokenHash && !token.startsWith('bza_') ? 'token_disabled' : 'token_invalid');
     }
     c.set('viaToken', true);
+    c.set('apiScope', scope);
     await next();
   };
 }
@@ -79,3 +83,16 @@ export function endSession(c: Context<AdminEnv>, db: Db): void {
   if (session) deleteSession(db, session.id_hash);
   deleteCookie(c, SESSION_COOKIE, { path: '/', secure: true });
 }
+
+/** Explicit allow-list: new API mutations are denied to publish keys until reviewed. */
+export const scopeGuard: MiddlewareHandler<AdminEnv> = async (c, next) => {
+  const scope = c.get('apiScope');
+  if (!scope || scope === 'full' || c.req.method === 'GET' || c.req.method === 'HEAD') return next();
+  const path = c.req.path;
+  const allowed = scope === 'publish' && (
+    (c.req.method === 'POST' && (path === '/api/artifacts' || /^\/api\/artifacts\/[^/]+\/(?:publish|theme-preview|apply-theme)$/.test(path))) ||
+    (c.req.method === 'PUT' && /^\/api\/artifacts\/[^/]+\/content$/.test(path))
+  );
+  if (!allowed) throw new HttpError(403, 'token_not_allowed');
+  await next();
+};

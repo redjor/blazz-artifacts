@@ -36,6 +36,12 @@ function uploadForm(name: string, data: string, fields: Record<string, string> =
   return form;
 }
 
+async function approve(h: Awaited<ReturnType<typeof adminSetup>>, auth: Auth, id: string) {
+  const versionId = getArtifact(h.db,id)!.current_version_id;
+  const res = await h.admin.request(`/api/artifacts/${id}/publish`, {method:'POST',headers:authed(auth,{'content-type':'application/json'}),body:JSON.stringify({versionId})});
+  assert.equal(res.status,200);
+}
+
 test('CSP stricte et en-têtes sur le serveur admin', async () => {
   const { admin } = await adminSetup();
   const res = await admin.request('/api/session');
@@ -136,6 +142,7 @@ test('liens : création, URL recopiable, révocation', async () => {
   const h = await adminSetup();
   const auth = await h.login();
   const created = (await (await h.admin.request('/api/artifacts', { method: 'POST', headers: authed(auth), body: uploadForm('a.html', 'x', { visibility: 'link' }) })).json()) as { id: string };
+  await approve(h, auth, created.id);
   const linkRes = await h.admin.request(`/api/artifacts/${created.id}/links`, { method: 'POST', headers: authed(auth, { 'content-type': 'application/json' }), body: JSON.stringify({ label: 'For the client', expiresAt: new Date(Date.now() + 86400_000).toISOString() }) });
   assert.equal(linkRes.status, 201);
   const link = (await linkRes.json()) as { id: string; url: string; active: boolean };
@@ -165,6 +172,7 @@ async function lockedArtifact() {
   const h = await adminSetup();
   const auth = await h.login();
   const created = (await (await h.admin.request('/api/artifacts', { method: 'POST', headers: authed(auth), body: uploadForm('a.html', 'x', { slug: 'prot', visibility: 'code', code: 'sesame' }) })).json()) as { id: string };
+  await approve(h, auth, created.id);
   const previewUrl = async () => {
     const { url } = (await (await h.admin.request(`/api/artifacts/${created.id}/preview`, { headers: { cookie: auth.cookie } })).json()) as { url: string };
     return url.replace('https://artifacts.test', '');
@@ -217,6 +225,7 @@ test('PUT content remplace sans changer l’URL ; DELETE supprime les fichiers',
   const created = (await (await h.admin.request('/api/artifacts', { method: 'POST', headers: authed(auth), body: uploadForm('a.html', 'v1', { visibility: 'public' }) })).json()) as { id: string };
   const put = await h.admin.request(`/api/artifacts/${created.id}/content`, { method: 'PUT', headers: authed(auth), body: uploadForm('b.html', 'v2') });
   assert.equal(put.status, 200);
+  await approve(h, auth, created.id);
   const first = await h.content.request('/a/a');
   const served = await h.content.request(first.headers.get('location')!);
   assert.equal(await served.text(), 'v2');
@@ -400,6 +409,7 @@ test('le serveur de contenu n’expose ni projet ni tag', async () => {
   const mk = async (slug: string, extra: Record<string, string>) => {
     const res = await h.admin.request('/api/artifacts', { method: 'POST', headers: authed(auth), body: uploadForm(`${slug}.html`, '<p>contenu</p>', { project: 'zzprojetsecret', tags: 'zztagsecret', ...extra }) });
     assert.equal(res.status, 201);
+    await approve(h, auth, (await res.json()).id);
   };
   await mk('pub', { visibility: 'public' });
   await mk('cod', { visibility: 'code', code: 'sesame1' });
@@ -423,6 +433,7 @@ async function versioned() {
   const h = await adminSetup();
   const auth = await h.login();
   const created = (await (await h.admin.request('/api/artifacts', { method: 'POST', headers: authed(auth), body: uploadForm('a.html', '<p>un</p>', { slug: 'hist', visibility: 'private' }) })).json()) as { id: string; version: { number: number } };
+  await approve(h, auth, created.id);
   const put = (name: string, data: string) => h.admin.request(`/api/artifacts/${created.id}/content`, { method: 'PUT', headers: authed(auth), body: uploadForm(name, data) });
   const get = async (path: string) => (await h.admin.request(`/api/artifacts/${created.id}${path}`, { headers: { cookie: auth.cookie } })).json();
   const post = (path: string, otherId = created.id) => h.admin.request(`/api/artifacts/${otherId}${path}`, { method: 'POST', headers: authed(auth) });
@@ -575,6 +586,7 @@ type ShareLinkDto = { id: string; url: string; label: string | null; expiresAt: 
 
 test('share : depuis privé → visibilité lien, lien de 7 jours par défaut, DTO avec activeLinkUrl', async () => {
   const t = await shareSetup('private');
+  await approve(t.h, t.auth, t.id);
   const before = Date.now();
   const res = await t.share({ label: 'For the client' });
   assert.equal(res.status, 201);

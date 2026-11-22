@@ -77,7 +77,8 @@ test('note de version : bornée, texte seulement, version de cet artéfact seule
 
 test('note de version : dans l’infobulle de la version, sur la barre visiteur', async () => {
   const h = await adminSetup();
-  const a = (await (await h.upload('POST', '/artifacts', 'page.html', '<p>a</p>', { visibility: 'public', message: 'Bouton <Réserver>' })).json()) as { slug: string };
+  const a = (await (await h.upload('POST', '/artifacts', 'page.html', '<p>a</p>', { visibility: 'public', message: 'Bouton <Réserver>' })).json()) as { id: string; slug: string; version: {id:string} };
+  assert.equal((await h.call(`/artifacts/${a.id}/publish`, {method:'POST',body:{versionId:a.version.id}})).status,200);
   const html = await (await h.content.request(`/a/${a.slug}`, { headers: { 'user-agent': BROWSER, 'sec-fetch-dest': 'document' } })).text();
   assert.match(html, /<span class="bar-version" title="Version 1: Bouton &lt;Réserver&gt;">v1<\/span>/);
 });

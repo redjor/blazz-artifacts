@@ -7,8 +7,10 @@ import type { Db } from '../db.ts';
 import { registerFavicon } from '../favicon.ts';
 import { clientIp, errorBody, HttpError } from '../http.ts';
 import type { RateLimiter } from '../ratelimit.ts';
+import { createKeyRoutes, initializeApiKeys } from './api-keys.ts';
+import { registerMcp } from './mcp.ts';
 import { createApiRoutes } from './api.ts';
-import { csrfGuard, endSession, originGuard, requireSession, sessionMiddleware, startSession, tokenMiddleware, type AdminEnv } from './auth.ts';
+import { csrfGuard, endSession, originGuard, requireSession, sessionMiddleware, startSession, tokenMiddleware, scopeGuard, type AdminEnv } from './auth.ts';
 import { serveSpa } from './spa.ts';
 
 /** Strict CSP; frames from the content origin and sandboxed, authenticated theme previews on this origin. */
@@ -21,6 +23,7 @@ export interface AdminDeps { db: Db; cfg: Config; keys: Keys; loginLimiter: Rate
 export function createAdminApp(deps: AdminDeps): Hono<AdminEnv> {
   const { db, cfg, loginLimiter } = deps;
   const nowMs = () => (deps.now ?? Date.now)();
+  initializeApiKeys(db);
   const app = new Hono<AdminEnv>();
   const csp = adminCsp(new URL(cfg.publicContentUrl).origin);
 
@@ -44,7 +47,7 @@ export function createAdminApp(deps: AdminDeps): Hono<AdminEnv> {
     return c.body(new Uint8Array(data), 200, { 'Content-Type': 'font/woff2', 'Cache-Control': 'public, max-age=604800', 'Access-Control-Allow-Origin': '*' });
   });
 
-  app.use('/api/*', tokenMiddleware(cfg, loginLimiter), originGuard(cfg), sessionMiddleware(db));
+  app.use('/api/*', tokenMiddleware(cfg, loginLimiter, db, nowMs), originGuard(cfg), sessionMiddleware(db));
 
   app.get('/api/session', (c) => {
     const session = c.get('session');
@@ -78,10 +81,14 @@ export function createAdminApp(deps: AdminDeps): Hono<AdminEnv> {
     return c.json({ ok: true });
   });
 
+  app.route('/api/keys', createKeyRoutes(db, nowMs));
+  app.use('/api/*', scopeGuard);
   app.route('/api', createApiRoutes(deps));
   app.all('/api/*', () => {
     throw new HttpError(404, 'unknown_route');
   });
+
+  registerMcp(app, { db, cfg, loginLimiter, now: nowMs });
 
   if (deps.webDist) {
     const dist = deps.webDist;

@@ -108,10 +108,11 @@ export function pruneVersionRows(db: Db, dataDir: string, artifactId: string): s
     const art = getArtifact(db, artifactId);
     if (!art) return [];
     const prunable = listVersions(db, artifactId).filter((v) => v.kind !== null && !KEEP_FOREVER_KINDS.includes(v.kind));
-    let slots = KEEP_OTHER - (prunable.some((v) => v.id === art.current_version_id) ? 1 : 0);
+    const protectedIds = new Set([art.current_version_id, art.published_version_id]);
+    let slots = KEEP_OTHER - prunable.filter(v => protectedIds.has(v.id)).length;
     const dirs: string[] = [];
     for (const v of prunable) {
-      if (v.id === art.current_version_id) continue;
+      if (protectedIds.has(v.id)) continue;
       if (slots > 0) {
         slots--;
         continue;

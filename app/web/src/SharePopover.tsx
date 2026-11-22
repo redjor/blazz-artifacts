@@ -1,3 +1,4 @@
+import { ShareTools } from './ShareTools.tsx';
 import { formatDate } from './format.ts';
 import { t } from './i18n/index.ts';
 import { ChevronDownIcon, ShareIcon, WarningIcon } from './icons.tsx';
@@ -36,10 +37,11 @@ export function SharePopover({ view, detail, busy, triggerClass, onVisibility, o
   const link = view.visibility === 'link' ? detail?.links.find((l) => l.url !== null && l.url === view.activeLinkUrl) : undefined;
   return (
     <Popover label={t('share.label', { title: view.title })} align="start" triggerClass={triggerClass} wrapClass="relative max-sm:static"
-      panelClass="w-[min(22rem,calc(100vw-2.5rem))] p-2"
+      panelClass="w-[min(22rem,calc(100vw-2.5rem))] max-h-[45dvh] overflow-y-auto overscroll-contain p-2"
       trigger={<><ShareIcon className="size-4" />{t('share.button')}<ChevronDownIcon className="-mr-1 size-4 text-muted" /></>}>
       {(close) => (
         <>
+          {view.publishedVersionId === null && <p className="px-2 py-2 text-sm text-muted">{t('publication.shareHint')}</p>}
           <VisibilityPicker compact immediate value={view.visibility} disabled={busy}
             onChange={(v) => {
               if (onVisibility(v) === 'tab') close();
@@ -73,6 +75,7 @@ export function SharePopover({ view, detail, busy, triggerClass, onVisibility, o
             )}
           </div>
           <div className="mx-1 my-2 h-px bg-line" role="separator" />
+          <ShareTools artifact={view} onCopy={onCopy} />
           <button type="button" className={menuItem} onClick={() => { close(); onManage(); }}>{t('share.manage')}</button>
         </>
       )}

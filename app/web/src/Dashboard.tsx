@@ -9,8 +9,9 @@ import { copyFolderLink as copyFolderLinkOf, shareFolderFor7Days } from './folde
 import { deleteChildrenNote, FolderDrawer, type TabId } from './FolderPanel.tsx';
 import { ACCEPT_ALL, artifactOpenLabel, compareText, formatDay, KIND_FILTERS, kindLabel, kindTileLabel, VISIBILITY_ORDER, visibilityLabel, visibilityShort } from './format.ts';
 import { getLocale, setLocale, t, tn, type Locale, type MessageKey } from './i18n/index.ts';
+import { ApiKeys } from './ApiKeys.tsx';
 import { LanguageSwitch } from './LanguageSwitch.tsx';
-import { CheckIcon, ChevronDownIcon, ClipboardIcon, CloseIcon, FilterIcon, FolderPlusIcon, GridIcon, KIND_ICON, KeyboardIcon, ListIcon, LogoutIcon, PinIcon, PlusIcon, SearchIcon, TrashIcon, UploadIcon, VISIBILITY_ICON } from './icons.tsx';
+import { CheckIcon, ChevronDownIcon, ClipboardIcon, CloseIcon, FilterIcon, FolderPlusIcon, GridIcon, KIND_ICON, KeyboardIcon, ListIcon, LogoutIcon, OpenIcon, PinIcon, PlusIcon, SearchIcon, TrashIcon, UploadIcon, VISIBILITY_ICON } from './icons.tsx';
 import { hasOpenLayer, isEditable } from './layers.ts';
 import { Popover, type PopoverHandle } from './Popover.tsx';
 import { ancestorsOf, childrenOf, folderPath, openerOf, sharedVia, survivingParent, treeOptions, type TreeFolder } from './folderTree.ts';
@@ -84,6 +85,7 @@ const SHORTCUTS: { keys: (string | MessageKey)[]; label: MessageKey }[] = [
   { keys: ['Ctrl/⌘', 'V'], label: 'shortcut.paste' },
   { keys: ['←', '↑', '→', '↓'], label: 'shortcut.move' },
   { keys: ['key.enter'], label: 'shortcut.open' },
+  { keys: ['Ctrl/⌘', 'key.enter'], label: 'preview.openTab' },
   { keys: ['key.space'], label: 'shortcut.quickLook' },
   { keys: ['E'], label: 'shortcut.manage' },
   { keys: ['X'], label: 'shortcut.select' },
@@ -105,6 +107,7 @@ function columnCount(list: HTMLElement | null): number {
 
 /** `locale` is only read to re-render on a language change. */
 export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }) {
+  const [apiKeysOpen, setApiKeysOpen] = useState(false);
   const [items, setItems] = useState<ArtifactDto[]>([]);
   // First successful load done; until then a failure shows `loadError` and a retry, not an empty hub.
   const [loaded, setLoaded] = useState(false);
@@ -459,7 +462,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
   const onListKey = (e: ReactKeyboardEvent<HTMLUListElement>) => {
     const target = e.target as HTMLElement;
     const id = target.dataset.card;
-    if (!id || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!id || e.altKey) return;
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !folderOfKey(id)) {
+      e.preventDefault();
+      void run(() => openPreview(id));
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) return;
     if (e.key === 'e' || e.key === 'E') {
       e.preventDefault();
       const folder = folderOfKey(id);
@@ -467,7 +476,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       else openArtifact(id);
       return;
     }
-    // Space: quick look, as in a file manager (Enter still opens in a tab); while selecting, Space toggles as before.
+    // Space and the native Enter click open Quick Look; selection keeps its existing behavior.
     if (e.key === ' ' && !e.shiftKey && !selecting && !folderOfKey(id)) {
       if (!items.find((a) => a.id === id)?.version) return;
       e.preventDefault();
@@ -978,6 +987,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
               </div>
             )}
           </Popover>
+          <button type="button" onClick={() => setApiKeysOpen(true)} className="rounded-full px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-ink">API / MCP</button>
+          {apiKeysOpen && <ApiKeys onClose={() => setApiKeysOpen(false)} />}
           <LanguageSwitch className="h-9 min-w-9" />
           <button type="button" onClick={onLogout} aria-label={t('gallery.logout')} data-tip={t('gallery.logout')} className={toolButton}>
             <LogoutIcon />
@@ -1189,9 +1200,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
                 const drop = fileDropFor(a);
                 return (
                   <li key={a.id} {...drop.handlers} className={`group relative flex items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4 ${drop.over ? 'drop-over' : act.checked ? 'bg-surface-2' : ''}`}>
-                    <button type="button" data-static data-card={a.id} tabIndex={tabbable ? 0 : -1} onFocus={() => setFocusId(a.id)} onClick={selecting ? act.onToggleSelect : act.onPreview}
+                    <button type="button" data-static data-card={a.id} tabIndex={tabbable ? 0 : -1} onFocus={() => setFocusId(a.id)} onClick={(e) => { if (selecting) act.onToggleSelect(); else if (e.metaKey || e.ctrlKey) act.onPreview(); else act.onQuickLook(); }}
                       draggable={!selecting} onDragStart={(e) => { e.dataTransfer.setData(CARD_DRAG_TYPE, a.id); e.dataTransfer.effectAllowed = 'move'; }}
-                      aria-label={selecting ? t('select.check', { title: a.title }) : artifactOpenLabel(a, false)} aria-pressed={selecting ? act.checked : undefined} aria-keyshortcuts="E X"
+                      aria-label={selecting ? t('select.check', { title: a.title }) : artifactOpenLabel(a, false)} aria-pressed={selecting ? act.checked : undefined} aria-keyshortcuts="Enter Space Control+Enter Meta+Enter E X"
                       className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left sm:gap-4">
                       <span className={`band kind-${a.kind} grid size-10 shrink-0 place-items-center rounded-lg`}><Icon className="glyph size-5" /></span>
                       <span className="min-w-0 flex-1">
@@ -1209,6 +1220,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
                     <SelectCheck checked={act.checked} selecting={selecting} onToggle={act.onToggleSelect} onThumb={false}
                       className="absolute top-1/2 left-3 size-10 -translate-y-1/2 sm:left-4" />
                     <div className="hidden shrink-0 gap-1 text-sm sm:flex">
+                      <button type="button" tabIndex={tabbable ? 0 : -1} onClick={act.onPreview} aria-label={t('preview.openTab')} title={t('preview.openTab')} className="grid size-9 place-items-center rounded-lg hover:bg-surface-2"><OpenIcon className="size-4" /></button>
                       <button type="button" tabIndex={tabbable ? 0 : -1} onClick={() => { if (!priv) act.onCopy(); }} aria-disabled={priv || undefined}
                         data-tip={priv ? t('card.privateHint') : undefined} aria-label={priv ? t('gallery.copyLinkPrivate', { hint: t('card.privateHint') }) : t('common.copyLink')}
                         className={`rounded-lg px-2.5 py-1.5 ${priv ? 'tip tip-end cursor-default text-muted' : 'hover:bg-surface-2'}`}>{t('common.copy')}</button>
@@ -1262,7 +1274,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void; locale: Locale }
       {paletteOpen && (
         <CommandPalette items={items} folders={namedFolders.map((f) => ({ name: f.name, title: f.title, count: f.count }))} paths={folderPaths} actions={paletteActions}
           onClose={() => setPaletteOpen(false)}
-          onOpenArtifact={(a) => { pushedPanel.current = true; go(a.project, a.id); setFocusId(a.id); }}
+          onOpenArtifact={(a) => { setQuickLook(a.id); setFocusId(a.id); }}
           onOpenArtifactTab={(a) => void run(() => openPreview(a.id))}
           onOpenFolder={enterFolder} />
       )}

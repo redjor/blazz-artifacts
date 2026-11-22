@@ -17,6 +17,7 @@ export interface SearchResultDto { id: string; snippet: SnippetPart[] | null }
 export type BulkOp = 'move' | 'addTags' | 'removeTags' | 'visibility' | 'pin' | 'unpin' | 'trash' | 'restore';
 
 export interface ArtifactDto {
+  publishedVersionId?: string | null; publishedVersionNumber?: number | null;
   themeId?: string | null; effectiveThemeId?: string | null;
   id: string; slug: string; title: string; kind: Kind; visibility: Visibility; hasCode: boolean; memoryStorage: boolean; project: string | null; tags: string[];
   /** Optional text under the title (design 12). */
@@ -56,6 +57,7 @@ export interface StatsDto {
 }
 
 export interface VersionDto {
+  published?: boolean;
   id: string; number: number; kind: Kind; originalName: string; sizeBytes: number; fileCount: number; createdAt: string; current: boolean;
   thumbnailUrl: string | null;
   /** What changed in this version (design 16), or null. */

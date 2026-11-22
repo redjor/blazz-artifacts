@@ -6,6 +6,7 @@ import { tr, type Locale } from '../i18n.ts';
 import type { Theme } from '../themes.ts';
 import type { Kind } from '../repo.ts';
 import { DIR_MODE, normalizeModes } from '../storage.ts';
+import { compileComponent } from './jsx.ts';
 import { JsonRejected, renderJson } from './json.ts';
 import { renderMarkdown } from './markdown.ts';
 import { renderArticle } from './page.ts';
@@ -23,7 +24,7 @@ export interface IngestResult { kind: Kind; entryPath: string; sizeBytes: number
 const MAX_TEXT_BYTES = 5 * 1024 * 1024;
 
 const KINDS: Record<string, Kind> = {
-  html: 'html', htm: 'html', md: 'markdown', markdown: 'markdown', pdf: 'pdf', json: 'json', zip: 'site',
+  html: 'html', htm: 'html', jsx: 'html', tsx: 'html', md: 'markdown', markdown: 'markdown', pdf: 'pdf', json: 'json', zip: 'site',
 };
 
 export function detectKind(name: string): Kind | null {
@@ -66,13 +67,21 @@ async function ingestInto(file: UploadedFile, destDir: string, limits: ZipLimits
   if (!kind) throw new IngestRejected('unsupported_format');
   await mkdir(destDir, { recursive: true });
   const title = fallbackTitle ?? stripExtension(file.originalName);
-  if ((kind === 'markdown' || kind === 'json') && file.size > MAX_TEXT_BYTES) {
+  if ((kind === 'markdown' || kind === 'json' || /\.[jt]sx$/i.test(file.originalName)) && file.size > MAX_TEXT_BYTES) {
     await rm(destDir, { recursive: true, force: true });
     throw new IngestRejected('text_too_large');
   }
   try {
     switch (kind) {
       case 'html':
+        if (/\.[jt]sx$/i.test(file.originalName)) {
+          const source = await readFile(file.tmpPath, 'utf8');
+          const r = await compileComponent(source, file.originalName, title);
+          await writeFile(join(destDir, 'index.html'), r.html);
+          await writeFile(join(destDir, 'component.js'), r.code);
+          await writeFile(join(destDir, file.originalName.toLowerCase().endsWith('.tsx') ? 'source.tsx' : 'source.jsx'), source);
+          return {kind, entryPath:'index.html',sizeBytes:file.size,fileCount:3};
+        }
         await copyFile(file.tmpPath, join(destDir, 'index.html'));
         return { kind, entryPath: 'index.html', sizeBytes: file.size, fileCount: 1 };
       case 'pdf':

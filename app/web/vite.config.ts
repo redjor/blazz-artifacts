@@ -11,6 +11,7 @@ export default defineConfig({
     port: Number(process.env.WEB_PORT) || 5173,
     strictPort: true,
     proxy: {
+      '/mcp': `http://127.0.0.1:${process.env.ADMIN_PORT || 3000}`,
       '/api': `http://127.0.0.1:${process.env.ADMIN_PORT || 3000}`,
       '/favicon.png': `http://127.0.0.1:${process.env.ADMIN_PORT || 3000}`,
     },

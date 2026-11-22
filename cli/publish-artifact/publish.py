@@ -27,7 +27,7 @@ if sys.version_info < (3, 10):  # before any « str | None » annotation
     sys.exit('Error: publish.py needs Python 3.10 or newer (python3 --version).')
 
 MAX_BYTES = 100 * 1024 * 1024
-FILE_EXTENSIONS = {'.html', '.htm', '.md', '.markdown', '.pdf', '.json', '.zip'}
+FILE_EXTENSIONS = {'.html', '.htm', '.jsx', '.tsx', '.md', '.markdown', '.pdf', '.json', '.zip'}
 RESERVED = {'share', 'assets', 'api', 'admin', 'hub', 'unlock'}
 ALWAYS_SKIP_DIRS = {'__MACOSX', '.git', 'node_modules'}
 ALWAYS_SKIP_FILES = {'.DS_Store'}
@@ -325,6 +325,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument('--slug')
     p.add_argument('-m', '--message', help='Version note: what changed in this version (200 characters max)')
     p.add_argument('--title')
+    p.add_argument('--publish', action='store_true', help='Approve the uploaded version for visitors (otherwise saved as a draft)')
     p.add_argument('--visibility', choices=VISIBILITIES)
     p.add_argument('--code')
     p.add_argument('--link-hours', type=float)
@@ -829,6 +830,8 @@ def run(args: argparse.Namespace) -> int:
                 print(f'[dry-run] then slug rename: {slug} -> {rename} (the old URL will stop working)')
             if args.link_hours:
                 print(f'[dry-run] {args.link_hours} h share link if the visibility is “link”')
+            if args.publish:
+                print('[dry-run] then POST /api/artifacts/<id>/publish with the uploaded versionId')
             if not args.no_thumbnail:
                 print(f'[dry-run] then thumbnail (except PDF): {THUMB_VIEWPORT[0]}×{THUMB_VIEWPORT[1]} capture via {browser_label()}, '
                       'PUT /api/artifacts/<id>/versions/<id>/thumbnail')
@@ -890,6 +893,9 @@ def run(args: argparse.Namespace) -> int:
             art = call(token, 'POST', f'{base}/api/artifacts', fields=fields, file=(upload, filename))
             action = 'created'
 
+        if args.publish:
+            art = call(token, 'POST', f"{base}/api/artifacts/{art['id']}/publish", json_body={'versionId': art['version']['id']})
+
         share_url = expires = link_error = None
         if art['visibility'] == 'link' and args.link_hours:
             expires = (datetime.now(timezone.utc) + timedelta(hours=args.link_hours)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
@@ -905,6 +911,7 @@ def run(args: argparse.Namespace) -> int:
             print(f"description: {art['description']}")
         print(f"slug: {art['slug']}")
         print(f"visibility: {art['visibility']}")
+        print('publication: approved' if args.publish else 'publication: draft (use --publish to approve for visitors)')
         if art.get('version'):
             print(f"version: v{art['version']['number']}")
             if art['version'].get('message'):

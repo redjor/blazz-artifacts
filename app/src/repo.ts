@@ -10,7 +10,7 @@ export interface Artifact {
   id: string; slug: string; title: string; kind: Kind; visibility: Visibility;
   /** Optional plain text under the title (design 12). */
   description: string | null;
-  code_hash: string | null; access_epoch: number; current_version_id: string | null;
+  code_hash: string | null; access_epoch: number; current_version_id: string | null; published_version_id: string | null;
   created_at: string; updated_at: string; memory_storage: number;
   project: string | null; pinned_at: string | null;
   /** Position in the folder (admin-chosen order); null: not placed yet. */
@@ -109,7 +109,7 @@ function insertVersion(db: Db, artifactId: string, v: NewVersion, kind: Kind, at
   ).run(v.id, artifactId, v.entry_path, v.original_name, v.size_bytes, v.file_count, at, kind, v.message ?? null, v.theme_snapshot ?? null, artifactId);
 }
 
-export function insertArtifactWithVersion(db: Db, a: NewArtifact, v: NewVersion): Artifact {
+export function insertArtifactWithVersion(db: Db, a: NewArtifact, v: NewVersion, draft = false): Artifact {
   const at = nowIso();
   tx(db, () => {
     db.prepare(
@@ -117,19 +117,36 @@ export function insertArtifactWithVersion(db: Db, a: NewArtifact, v: NewVersion)
     ).run(a.id, a.slug, a.title, a.description ?? null, a.kind, a.visibility, a.code_hash, a.memory_storage ?? 0, a.project ?? null, at, at);
     setTags(db, a.id, a.tags ?? []);
     insertVersion(db, a.id, v, a.kind, at);
-    db.prepare('UPDATE artifacts SET current_version_id = ? WHERE id = ?').run(v.id, a.id);
+    db.prepare('UPDATE artifacts SET current_version_id = ?, published_version_id = ? WHERE id = ?').run(v.id, draft ? null : v.id, a.id);
   });
   return getArtifact(db, a.id)!;
 }
 
-export function activateVersion(db: Db, artifactId: string, v: NewVersion, kind: Kind, themeId?: string | null, afterActivate?: () => void): void {
+export function activateVersion(db: Db, artifactId: string, v: NewVersion, kind: Kind, themeId?: string | null, afterActivate?: () => void, draft = false): void {
   const at = nowIso();
   tx(db, () => {
     insertVersion(db, artifactId, v, kind, at);
     if (themeId !== undefined) db.prepare('UPDATE artifacts SET theme_id = ? WHERE id = ?').run(themeId, artifactId);
     db.prepare('UPDATE artifacts SET current_version_id = ?, kind = ?, updated_at = ? WHERE id = ?').run(v.id, kind, at, artifactId);
+    if (!draft) db.prepare('UPDATE artifacts SET published_version_id = ? WHERE id = ?').run(v.id, artifactId);
     afterActivate?.();
   });
+}
+
+/** Publish exactly the reviewed version, without changing the working version or access policy. */
+export function publishVersion(db: Db, artifactId: string, versionId: string): boolean {
+  return tx(db, () => {
+    const art = getArtifact(db, artifactId);
+    const v = getVersion(db, versionId);
+    if (!art || !v || v.artifact_id !== artifactId) return false;
+    db.prepare('UPDATE artifacts SET published_version_id = ?, updated_at = ? WHERE id = ?').run(versionId, nowIso(), artifactId);
+    return true;
+  });
+}
+
+/** Visitor projection: all existing access checks operate on the approved version. */
+export function publishedArtifact(art: Artifact): Artifact {
+  return { ...art, current_version_id: art.published_version_id };
 }
 
 /**

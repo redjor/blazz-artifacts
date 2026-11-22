@@ -1,3 +1,4 @@
+import { sharingRoutes } from './sharing.ts';
 import { googleFontCatalog, prepareGoogleFont } from '../google-fonts.ts';
 import { themeDto } from '../themes.ts';
 import { renderThemeThumbnail, thumbnailTheme } from '../theme-thumbnail.ts';
@@ -19,7 +20,7 @@ import { staticLocale } from '../i18n.ts';
 import { newId } from '../ids.ts';
 import { ingestFile, renderSourcePage, stripExtension, type UploadedFile } from '../ingest/ingest.ts';
 import {
-  activateVersion, bumpEpoch, bumpProjectEpoch, deleteArtifact, deleteProject, getArtifact, getArtifactBySlug, getProject, getTrashedArtifact, getVersion, insertArtifactWithVersion,
+  publishVersion, activateVersion, bumpEpoch, bumpProjectEpoch, deleteArtifact, deleteProject, getArtifact, getArtifactBySlug, getProject, getTrashedArtifact, getVersion, insertArtifactWithVersion,
   listFolderArtifacts, listFolderLinks, listFolders, listVersions, projectExists, recentProjectArtifacts, renameProject, restoreVersion, revokeFolderLink, setVersionMessage, setProjectOrder,
   setVersionThumb, getTags, insertLink, listArtifacts, listLinks, listTagCounts, listTrash, restoreArtifact, revokeLink, setPinned, setTags, slugHolder, trashArtifact,
   updateArtifact, upsertProject, VISIBILITIES, type Artifact, type ArtifactPatch, type TrashedArtifact, type Project, type ProjectPatch, type ShareLink, type Version, type Visibility,
@@ -132,6 +133,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
   const nowMs = () => (deps.now ?? Date.now)();
   const limits = { maxFiles: cfg.zipMaxFiles, maxBytes: cfg.zipMaxBytes };
   const api = new Hono<AdminEnv>();
+  api.route('/', sharingRoutes(db, cfg, keys, nowMs));
   const previewOf = createPreviewCache(cfg.dataDir);
   // Full-text search (design 07): artifacts published before it existed are indexed once.
   indexMissing(db, cfg.dataDir);
@@ -192,6 +194,8 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     const v = art.current_version_id ? getVersion(db, art.current_version_id) : undefined;
     return {
       id: art.id, slug: art.slug, title: art.title, description: art.description, kind: art.kind, visibility: art.visibility,
+      publishedVersionId: art.published_version_id,
+      publishedVersionNumber: art.published_version_id ? getVersion(db, art.published_version_id)?.number ?? null : null,
       hasCode: !!art.code_hash, memoryStorage: art.memory_storage === 1, createdAt: art.created_at, updatedAt: art.updated_at,
       project: art.project, themeId: art.theme_id, effectiveThemeId: resolveTheme(db, art.theme_id, art.project)?.id ?? null, tags: getTags(db, art.id),
       // Visibility of the project's folder (“shared through the folder” when not private); null without a project.
@@ -332,7 +336,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
       const current = mustGet(art.id);
       if (current.current_version_id !== v.id || current.title !== art.title || JSON.stringify(resolveTheme(db, themeId, current.project)) !== binding.snapshot) throw new HttpError(409, 'version_changed');
       // No await between the compare and activation: both are synchronous SQLite writes.
-      activateVersion(db, art.id, { id: versionId, entry_path: r.entryPath, original_name: v.original_name, size_bytes: r.sizeBytes, file_count: r.fileCount, theme_snapshot: theme ? JSON.stringify(theme) : null }, 'markdown', getTheme(db, themeId ?? '') ? themeId : null, () => indexArtifact(db, cfg.dataDir, mustGet(art.id)));
+      activateVersion(db, art.id, { id: versionId, entry_path: r.entryPath, original_name: v.original_name, size_bytes: r.sizeBytes, file_count: r.fileCount, theme_snapshot: theme ? JSON.stringify(theme) : null }, 'markdown', getTheme(db, themeId ?? '') ? themeId : null, () => indexArtifact(db, cfg.dataDir, mustGet(art.id)), true);
       themePreviews.delete(body.previewToken);
     } catch (e) { await rm(dir, { recursive: true, force: true }); throw e; }
     await pruneVersions(db, cfg.dataDir, art.id);
@@ -342,6 +346,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
 
   api.post('/artifacts', (c) =>
     withUpload(c, async (fields, file) => {
+      if (c.get('apiScope') === 'publish' && ((fields.visibility && fields.visibility !== 'private') || fields.code || fields.project)) throw new HttpError(403, 'token_not_allowed');
       const title = parseTitle(fields.title?.trim() || stripExtension(file.originalName));
       const slug = fields.slug?.trim() || slugify(file.originalName);
       assertSlugFree(slug);
@@ -361,6 +366,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
           db,
           { id, slug, title, description, kind: r.kind, visibility, code_hash: codeHash, memory_storage: ['true', '1'].includes(fields.memoryStorage ?? '') ? 1 : 0, project, tags },
           { id: versionId, entry_path: r.entryPath, original_name: file.originalName, size_bytes: r.sizeBytes, file_count: r.fileCount, message, theme_snapshot: r.kind === 'markdown' && theme ? JSON.stringify(theme) : null },
+          true,
         );
         indexArtifact(db, cfg.dataDir, art);
         return c.json(artifactDto(art), 201);
@@ -433,12 +439,20 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
       const versionId = newId();
       const theme = resolveTheme(db, art.theme_id, art.project);
       const r = await ingestFile(file, versionDir(cfg.dataDir, art.id, versionId), limits, staticLocale(cfg.locale), theme);
-      activateVersion(db, art.id, { id: versionId, entry_path: r.entryPath, original_name: file.originalName, size_bytes: r.sizeBytes, file_count: r.fileCount, message, theme_snapshot: r.kind === 'markdown' && theme ? JSON.stringify(theme) : null }, r.kind);
+      activateVersion(db, art.id, { id: versionId, entry_path: r.entryPath, original_name: file.originalName, size_bytes: r.sizeBytes, file_count: r.fileCount, message, theme_snapshot: r.kind === 'markdown' && theme ? JSON.stringify(theme) : null }, r.kind, undefined, undefined, true);
       indexArtifact(db, cfg.dataDir, mustGet(art.id));
       await pruneVersions(db, cfg.dataDir, art.id);
       return c.json(artifactDto(mustGet(art.id)));
     }),
   );
+
+  api.post('/artifacts/:id/publish', async c => {
+    const art = mustGet(c.req.param('id'));
+    const body = await c.req.json().catch(() => ({}));
+    if (!body || typeof body.versionId !== 'string') throw new HttpError(400, 'version_not_found');
+    if (!publishVersion(db, art.id, body.versionId)) throw new HttpError(404, 'version_not_found');
+    return c.json(artifactDto(mustGet(art.id)));
+  });
 
   api.post('/artifacts/:id/revoke-all', (c) => {
     const art = mustGet(c.req.param('id'));
@@ -595,7 +609,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
     const art = mustGet(c.req.param('id'));
     const version = art.current_version_id ? getVersion(db, art.current_version_id) : undefined;
     if (!version) throw new HttpError(404, 'no_content');
-    const sig = signPath(keys.pathSig, { artifactId: art.id, versionId: version.id, epoch: art.access_epoch }, Math.floor(nowMs() / 1000));
+    const sig = signPinnedPath(keys.pathSig, { artifactId: art.id, versionId: version.id, epoch: art.access_epoch }, Math.floor(nowMs() / 1000));
     return c.json({ url: `${cfg.publicContentUrl}/a/${art.slug}/${sig}/${encodePath(version.entry_path)}` });
   });
 
@@ -608,7 +622,7 @@ export function createApiRoutes(deps: ApiDeps): Hono<AdminEnv> {
 
   const versionDto = (art: Artifact, v: Version) => ({
     id: v.id, number: v.number, kind: v.kind ?? art.kind, message: v.message, originalName: v.original_name, sizeBytes: v.size_bytes,
-    fileCount: v.file_count, createdAt: v.created_at, current: v.id === art.current_version_id,
+    fileCount: v.file_count, createdAt: v.created_at, current: v.id === art.current_version_id, published: v.id === art.published_version_id,
     thumbnailUrl: thumbnailUrl(art.id, v, true),
   });
 

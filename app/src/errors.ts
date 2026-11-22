@@ -1,6 +1,7 @@
 // API errors: a stable machine `code` plus an English message. The admin SPA maps each code to
 // localised text (web/src/i18n) and falls back to the message. `{name}` placeholders are filled from `params`.
 export const ERRORS = {
+  invalid_component: 'Invalid React component: use valid JSX/TSX with a default export and npm imports (no local files).',
   font_unavailable: 'The selected font could not be downloaded. Please try again.',
   invalid_theme: 'Invalid theme: check text, colors, layout and embedded raster logo',
   theme_not_found: 'Theme not found',
@@ -68,7 +69,7 @@ export const ERRORS = {
   multipart_expected: 'Multipart request expected',
   multipart_invalid: 'Invalid multipart request',
   file_too_large: 'File too large ({max} MB max)',
-  unsupported_format: 'Unsupported format (HTML, Markdown, PDF, JSON or ZIP)',
+  unsupported_format: 'Unsupported format (HTML, JSX, TSX, Markdown, PDF, JSON or ZIP)',
   invalid_pdf: 'This file is not a valid PDF',
   text_too_large: 'Text file too large (5 MB max for Markdown and JSON)',
   invalid_json: 'Invalid JSON: {detail}',

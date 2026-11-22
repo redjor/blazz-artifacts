@@ -12,14 +12,14 @@ export const VISIBILITY_ORDER: Visibility[] = ['private', 'code', 'link', 'publi
 // "Create" tiles: one publishable kind per tile, with its accepted extensions.
 export const KIND_FILTERS: { kind: Kind; accept: string }[] = [
   { kind: 'markdown', accept: '.md,.markdown' },
-  { kind: 'html', accept: '.html,.htm' },
+  { kind: 'html', accept: '.html,.htm,.jsx,.tsx' },
   { kind: 'site', accept: '.zip' },
   { kind: 'pdf', accept: '.pdf' },
   { kind: 'json', accept: '.json' },
 ];
 export const kindTileLabel = (k: Kind) => t(`kindTile.${k}`);
 
-export const ACCEPT_ALL = '.html,.htm,.md,.markdown,.pdf,.json,.zip';
+export const ACCEPT_ALL = '.html,.htm,.jsx,.tsx,.md,.markdown,.pdf,.json,.zip';
 
 // Formatters follow the active locale; cached per locale.
 const cache = new Map<string, Intl.DateTimeFormat | Intl.NumberFormat | Intl.Collator>();

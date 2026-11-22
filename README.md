@@ -17,9 +17,11 @@ _To be added before the first public release:_
 
 ## Features
 
-- **Publish** HTML, Markdown (GFM, syntax highlighting, Mermaid diagrams, sanitised), PDF, JSON (formatted) and ZIP sites (Vite builds work, `<script type="module">` included) by drag and drop or from the CLI.
+- **Publish** HTML, React JSX/TSX components, Markdown (GFM, syntax highlighting, Mermaid diagrams, sanitised), PDF, JSON (formatted) and ZIP sites (Vite builds work, `<script type="module">` included) by drag and drop or from the CLI.
 - **Four visibility modes** per artifact: private, secret code, share link, public. Share links are revocable, can expire, and are counted.
-- **Stable URLs with versions**: re-publishing keeps `/a/<slug>`, adds a version; preview and restore any kept version.
+- **Stable URLs with approved versions**: uploads save drafts; explicitly publish the reviewed version while preserving `/a/<slug>`. Preview, compare, restore and publish any kept version.
+- **Agent integrations**: built-in HTTP MCP, CLI, named API keys with read/publish/full scopes, expiry and independent revocation. See [setup](docs/api-keys-mcp.md).
+- **Share anywhere**: locally generated QR codes (SVG/PNG) and iframe snippets for public, approved artifacts.
 - **Client Markdown themes**: reusable logos, colors, typography and layouts, inherited from folders or selected per document. Preview before applying a theme as a new version; existing versions keep their appearance. See [Markdown themes](docs/markdown-themes.md).
 - **Folders**: group artifacts, share a folder as a script-free page (`/d/<folder>`) with its own access mode, ordering, description and links.
 - **Visitor bar**: every artifact opens under a slim bar with its folder path, title, version, the original file and "Open alone"; folder pages share it (`ARTIFACT_BAR`).

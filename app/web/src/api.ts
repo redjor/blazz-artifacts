@@ -93,6 +93,7 @@ export const api = {
   /** Writes, corrects or clears (null) a version's note (design 16). */
   versionNote: (id: string, versionId: string, message: string | null) =>
     request<VersionDto>('PATCH', `/artifacts/${seg(id)}/versions/${seg(versionId)}`, { message }),
+  publishVersion: (id: string, versionId: string) => request<ArtifactDto>('POST', `/artifacts/${seg(id)}/publish`, { versionId }),
   restore: (id: string, versionId: string) => request<ArtifactDto>('POST', `/artifacts/${seg(id)}/versions/${seg(versionId)}/restore`),
   createFolder: (body: { name: string; title?: string; description?: string; parent?: string | null }) => request<FolderDetail>('POST', '/projects', body),
   folder: (name: string) => request<FolderDetail>('GET', `/projects/${seg(name)}`),

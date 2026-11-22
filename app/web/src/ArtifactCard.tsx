@@ -52,12 +52,12 @@ export function ActionsMenu({ a, onManage, onPreview, onQuickLook, onCopy, onSha
       onOpenChange={(o) => { if (!o) setMoveOpen(false); onOpenChange?.(o); }}>
       {(close) => (
         <>
-          <button type="button" className={menuItem} onClick={() => { close(); onPreview(); }}><OpenIcon className="size-4 text-muted" />{t('common.open')}</button>
           {a.version && (
             <button type="button" className={menuItem} aria-keyshortcuts="Space" onClick={() => { close(); onQuickLook(); }}>
               <EyeIcon className="size-4 text-muted" /><span className="flex-1">{t('preview.quickLook')}</span><kbd className="text-xs text-muted">{t('key.space')}</kbd>
             </button>
           )}
+          <button type="button" className={menuItem} onClick={() => { close(); onPreview(); }}><OpenIcon className="size-4 text-muted" />{t('preview.openTab')}</button>
           <button type="button" className={menuItem} aria-disabled={priv || undefined} aria-describedby={priv ? `copy-hint-${a.id}` : undefined}
             onClick={() => { if (priv) return; close(); onCopy(); }}>
             <CopyIcon className={`size-4 ${priv ? 'text-line-strong' : 'text-muted'}`} />
@@ -273,10 +273,10 @@ export function ArtifactCard({ a, tabbable, onFocusCard, selecting, snippet, fil
   return (
     <li className={`group relative min-w-0 ${menuOpen ? 'z-20' : ''}`} {...fileDrop?.handlers}>
       {/* While selecting, a click toggles the card instead of opening it (aria-pressed tells its state). */}
-      <button type="button" data-static data-card={a.id} tabIndex={tabbable ? 0 : -1} onFocus={onFocusCard} onClick={selecting ? actions.onToggleSelect : actions.onPreview}
+      <button type="button" data-static data-card={a.id} tabIndex={tabbable ? 0 : -1} onFocus={onFocusCard} onClick={(e) => { if (selecting) actions.onToggleSelect(); else if (e.metaKey || e.ctrlKey) actions.onPreview(); else actions.onQuickLook(); }}
         draggable={!selecting} onDragStart={(e) => { e.dataTransfer.setData(CARD_DRAG_TYPE, a.id); e.dataTransfer.effectAllowed = 'move'; }}
         aria-label={selecting ? t('select.check', { title: a.title }) : artifactOpenLabel(a)} aria-pressed={selecting ? checked : undefined}
-        aria-keyshortcuts="E X"
+        aria-keyshortcuts="Enter Space Control+Enter Meta+Enter E X"
         className={`card block w-full overflow-hidden rounded-2xl border bg-surface text-left transition-[border-color] ${fileDrop?.over ? 'drop-over border-ring' : checked ? 'border-ink ring-1 ring-ink' : 'border-line hover:border-line-strong'}`}>
         <span className="relative block">
           <span aria-hidden="true" className={`band kind-${a.kind} @container relative block aspect-[2/1] overflow-hidden`}>
@@ -292,7 +292,7 @@ export function ArtifactCard({ a, tabbable, onFocusCard, selecting, snippet, fil
           )}
           {/* Pin left of the ⋯ button (which sits at top-3 right-3, size-8): never overlapping. */}
           {a.pinned && (
-            <span aria-hidden="true" title={t('card.pinned')} className={`absolute top-3 right-[3.25rem] grid size-8 place-items-center rounded-lg ${chip}`}>
+            <span aria-hidden="true" title={t('card.pinned')} className={`absolute top-3 right-[5.75rem] grid size-8 place-items-center rounded-lg ${chip}`}>
               <PinIcon className="size-4" />
             </span>
           )}
@@ -304,7 +304,9 @@ export function ArtifactCard({ a, tabbable, onFocusCard, selecting, snippet, fil
         </span>
       </button>
       <SelectCheck checked={checked} selecting={selecting} onToggle={actions.onToggleSelect} className="absolute top-3 left-3 size-8" />
-      <div className={`absolute top-3 right-3 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${menuOpen ? 'opacity-100' : 'opacity-0'}`}>
+      <div className={`absolute top-3 right-3 flex gap-2 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${menuOpen ? 'opacity-100' : 'opacity-0'}`}>
+        <button type="button" onClick={actions.onPreview} tabIndex={tabbable ? 0 : -1} aria-label={t('preview.openTab')} title={t('preview.openTab')}
+          className={`grid size-8 place-items-center rounded-lg ${chip} hover:bg-black/80`}><OpenIcon className="size-4" /></button>
         <ActionsMenu a={a} {...actions} onOpenChange={setMenuOpen} tabIndex={tabbable ? 0 : -1}
           triggerClass={`grid size-8 place-items-center rounded-lg ${chip} hover:bg-black/80`} />
       </div>

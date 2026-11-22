@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { api, copyText } from './api.ts';
+import { api, copyText, openPreview } from './api.ts';
 import { formatBytes, normalizeLabel, slugify, stripExtension } from './format.ts';
 import { t } from './i18n/index.ts';
 import { ProjectInput, TagsInput } from './Labels.tsx';
@@ -63,7 +63,20 @@ export function PublishDialog({ file, defaultProject, projects, paths, tags: kno
 
   if (result) {
     return (
-      <Modal title={t('publish.done')} onClose={onClose}>
+      <Modal title={result.publishedVersionId ? t('publication.published') : t('publish.done')} onClose={onClose}>
+        {!result.publishedVersionId && <div className="mb-4 space-y-3">
+          <p className="text-sm text-muted">{t('publication.unpublished')}</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="rounded-lg border border-line px-3 py-2 text-sm" onClick={() => openPreview(result.id).catch(e => setError(e.message))}>{t('history.preview')}</button>
+            <button type="button" disabled={busy} className="rounded-lg bg-ink px-3 py-2 text-sm text-canvas disabled:opacity-40" onClick={async () => {
+              if (!result.version) return;
+              setBusy(true); setError(null);
+              try { setResult(await api.publishVersion(result.id,result.version.id)); onPublished(); }
+              catch(e) { setError((e as Error).message); }
+              finally { setBusy(false); }
+            }}>{t('publication.publish')}</button>
+          </div>
+        </div>}
         <p className="mb-2 text-sm text-muted">
           {result.visibility === 'link' ? t('publish.linkHint') : t('publish.urlLabel')}
         </p>

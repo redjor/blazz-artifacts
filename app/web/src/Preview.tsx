@@ -15,6 +15,17 @@ const SANDBOX = 'allow-scripts allow-forms allow-popups allow-popups-to-escape-s
 /** By the kind of the version shown (an older version may be of another kind than the artifact today). */
 const sandboxFor = (kind: Kind, minimal = false) => (kind === 'pdf' ? undefined : minimal ? 'allow-scripts' : SANDBOX);
 
+/** Native PDF readers otherwise open at 100% with a wide thumbnail sidebar.
+ * Apply initial view preferences before the frame loads; retain native zoom/download controls.
+ * The panel's non-interactive picture does not need a toolbar.
+ */
+function previewFrameUrl(url: string, kind: Kind, thumbnail = false): string {
+  if (kind !== 'pdf') return url;
+  const frameUrl = new URL(url);
+  frameUrl.hash = `view=Fit&navpanes=0&pagemode=none${thumbnail ? '&toolbar=0' : ''}`;
+  return frameUrl.href;
+}
+
 /** Pages that lay themselves out; readers and PDFs follow the frame. */
 const sized = (kind: Kind) => kind === 'html' || kind === 'site';
 
@@ -41,7 +52,7 @@ export function LivePreview({ a, onQuickLook }: { a: ArtifactDto; onQuickLook: (
     <div className="relative aspect-[8/5] w-full overflow-hidden rounded-xl border border-line bg-white">
       {url && url !== 'failed' && (
         // Inert: an artifact that focuses itself on load must not pull focus into this picture of it. Scripts only.
-        <iframe key={url} src={url} title={t('preview.frameTitle', { title: a.title })} tabIndex={-1} aria-hidden="true" inert loading="lazy" sandbox={sandboxFor(a.kind, true)}
+        <iframe key={url} src={previewFrameUrl(url, a.kind, true)} title={t('preview.frameTitle', { title: a.title })} tabIndex={-1} aria-hidden="true" inert loading="lazy" sandbox={sandboxFor(a.kind, true)}
           className={`pointer-events-none absolute top-0 left-0 border-0 ${sized(a.kind) ? 'h-[200%] w-[200%] origin-top-left scale-50' : 'size-full'}`} />
       )}
       {url === 'failed' && <p className="grid size-full place-items-center bg-surface-2 text-sm text-muted">{t('preview.failed')}</p>}
@@ -87,7 +98,13 @@ export function QuickLook({ id, order, items, onNavigate, onClose, onManage, onE
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
   useEffect(() => {
     keys.current = (e) => {
-      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || isEditable(e.target)) return;
+      if (e.defaultPrevented || e.altKey || isEditable(e.target)) return;
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (a) void openPreview(a.id).catch(err => onError((err as Error).message));
+        return;
+      }
+      if (e.ctrlKey || e.metaKey) return;
       if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
         e.preventDefault();
         go(e.key === 'ArrowRight' ? 1 : -1);
@@ -138,7 +155,7 @@ export function QuickLook({ id, order, items, onNavigate, onClose, onManage, onE
             </div>
           )}
           <div className="flex items-center gap-0.5">
-            <button type="button" className={btn} onClick={() => openPreview(a.id).catch((e) => onError((e as Error).message))} aria-label={t('preview.openTab')} data-tip={t('preview.openTab')}><OpenIcon /></button>
+            <button type="button" className={btn} onClick={() => openPreview(a.id).catch((e) => onError((e as Error).message))} aria-label={t('preview.openTab')} data-tip={t('preview.openTab')} aria-keyshortcuts="Control+Enter Meta+Enter"><OpenIcon /></button>
             <button type="button" className={btn} onClick={() => onManage(a.id)} aria-label={t('common.manage')} data-tip={t('common.manage')}><SlidersIcon /></button>
             <button type="button" className={`${btn} tip-end`} onClick={onClose} aria-label={t('common.close')} data-tip={t('preview.closeTip')} data-autofocus><CloseIcon /></button>
           </div>
@@ -146,7 +163,7 @@ export function QuickLook({ id, order, items, onNavigate, onClose, onManage, onE
         <div className={`grid min-h-0 flex-1 place-items-center overflow-auto ${shownScreen === 'desktop' ? '' : 'bg-surface-2 p-4 sm:p-6'}`}>
           {url === 'failed' ? <p className="text-sm text-muted">{t('preview.failed')}</p>
             : !url ? <p className="text-sm text-muted">{t('common.loading')}</p>
-              : <iframe key={url} src={url} title={t('preview.frameTitle', { title: a.title })} sandbox={sandboxFor(a.kind)} className={`block border-0 bg-white ${SCREEN_CLASS[shownScreen]}`} />}
+              : <iframe key={url} src={previewFrameUrl(url, a.kind)} title={t('preview.frameTitle', { title: a.title })} sandbox={sandboxFor(a.kind)} className={`block border-0 bg-white ${SCREEN_CLASS[shownScreen]}`} />}
         </div>
       </div>
     </div>,
@@ -187,7 +204,7 @@ function ComparePane({ a, v, versions, screen, onPick, side }: {
       <div className={`grid min-h-0 flex-1 place-items-center overflow-auto ${screen === 'desktop' ? '' : 'bg-surface-2 p-3'}`}>
         {url === 'failed' ? <p className="text-sm text-muted">{t('preview.failed')}</p>
           : !url ? <p className="text-sm text-muted">{t('common.loading')}</p>
-            : <iframe key={url} src={url} title={t('compare.frameTitle', { n: v.number })} sandbox={sandboxFor(v.kind)} className={`block border-0 bg-white ${SCREEN_CLASS[sized(v.kind) ? screen : 'desktop']}`} />}
+            : <iframe key={url} src={previewFrameUrl(url, v.kind)} title={t('compare.frameTitle', { n: v.number })} sandbox={sandboxFor(v.kind)} className={`block border-0 bg-white ${SCREEN_CLASS[sized(v.kind) ? screen : 'desktop']}`} />}
       </div>
     </section>
   );

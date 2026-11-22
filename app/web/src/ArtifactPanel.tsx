@@ -6,7 +6,7 @@ import { ThemeSection } from './Themes.tsx';
 import { Audience } from './Audience.tsx';
 import { formatBytes, formatCount, formatDate, formatViews, kindLabel, modifiedText, normalizeLabel, visibilityLabel } from './format.ts';
 import { t, tn, type MessageKey } from './i18n/index.ts';
-import { ChevronDownIcon, ChevronUpIcon, CloseIcon, CompareIcon, FolderIcon, KIND_ICON, OpenIcon, PinIcon, ShareIcon, VISIBILITY_ICON, WarningIcon } from './icons.tsx';
+import { ChevronDownIcon, ChevronUpIcon, CloseIcon, CompareIcon, FolderIcon, KIND_ICON, EyeIcon, OpenIcon, PinIcon, ShareIcon, VISIBILITY_ICON, WarningIcon } from './icons.tsx';
 import { LivePreview, VersionCompare } from './Preview.tsx';
 import { linkWithoutLink, SharePopover } from './SharePopover.tsx';
 import { ProjectInput, TagsInput } from './Labels.tsx';
@@ -142,7 +142,7 @@ function VersionNote({ v, artifactId, onSaved, onError }: { v: VersionDto; artif
   );
 }
 
-function History({ art, onRestore, onError }: { art: ArtifactDetail; onRestore: (v: VersionDto) => void; onError: (m: string | null) => void }) {
+function History({ art, onRestore, onPublish, busy, onError }: { art: ArtifactDetail; onPublish: (v: VersionDto) => void; busy: boolean; onRestore: (v: VersionDto) => void; onError: (m: string | null) => void }) {
   const [versions, setVersions] = useState<VersionDto[] | null>(null);
   const [all, setAll] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -191,6 +191,7 @@ function History({ art, onRestore, onError }: { art: ArtifactDetail; onRestore: 
             <span className="min-w-0 flex-1">
               <span className="flex flex-wrap items-center gap-2">
                 <span className="font-medium tabular-nums">v{v.number}</span>
+                {v.published && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ok">{t('publication.published')}</span>}
                 {v.current && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ok">{t('history.current')}</span>}
                 <span className="truncate text-muted">{v.originalName}</span>
               </span>
@@ -203,6 +204,7 @@ function History({ art, onRestore, onError }: { art: ArtifactDetail; onRestore: 
                 {t('history.compare')}
               </button>
             )}
+            {!v.published && <button type="button" className={ghost} disabled={busy} onClick={() => onPublish(v)}>{t('publication.publish')}</button>}
             {!v.current && <button type="button" className={ghost} onClick={() => onRestore(v)}>{t('history.restore')}</button>}
           </li>
         ))}
@@ -566,6 +568,10 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
     void act('thumb', () => api.putThumbnail(view.id, versionId, file), t('notice.thumbSaved'));
   };
 
+  const publish = (v: {id: string; number: number}) => {
+    void act('publish', () => api.publishVersion(view.id, v.id), t('publication.done', {n:v.number}));
+  };
+
   const restore = (v: VersionDto) => {
     if (!window.confirm(t('confirm.restore', { n: v.number }))) return;
     void act('restore', () => api.restore(view.id, v.id), t('notice.restored', { n: v.number }));
@@ -618,9 +624,16 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
             <span className="tabular-nums" title={t('drawer.last30', { n: formatCount(view.views.last30) })}>{view.views.total > 0 ? formatViews(view.views.total) : t('drawer.noViews')}</span>
           </p>
 
+          <div className="mt-4 rounded-xl border border-line bg-surface-2 px-3 py-3 text-sm">
+            <p>{view.publishedVersionId ? t('publication.live', {n:view.publishedVersionNumber ?? '?'}) : t('publication.unpublished')}</p>
+            {view.version && view.version.id !== view.publishedVersionId && <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="flex-1 text-muted">{t('publication.draft', {n:view.version.number})}</span>
+              <button type="button" className={primary} disabled={pending !== null} onClick={() => publish(view.version!)}>{t('publication.publish')}</button>
+            </div>}
+          </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button" className={primary} onClick={() => openPreview(view.id).catch((e) => setError((e as Error).message))}>
-              <OpenIcon className="size-4" />{t('common.open')}
+            <button type="button" className={primary} onClick={() => onQuickLook(view.id)}>
+              <EyeIcon className="size-4" />{t('preview.quickLook')}
             </button>
             <SharePopover view={view} detail={detail} busy={pending === 'access'} triggerClass={ghost}
               onVisibility={changeVisibility}
@@ -806,7 +819,7 @@ export function ArtifactDrawer({ id, summary, order, projects, paths, tagNames, 
 
           {/* History */}
           <div role="tabpanel" id={`${baseId}-panel-history`} aria-labelledby={`${baseId}-tab-history`} hidden={tab !== 'history'} className="px-5 py-6 sm:px-7">
-            {historySeen && detail ? <History art={detail} onRestore={restore} onError={setError} />
+            {historySeen && detail ? <History art={detail} onPublish={publish} busy={pending !== null} onRestore={restore} onError={setError} />
               : loadFailed ? <LoadFailed onRetry={retryLoad} /> : <p className="text-sm text-muted">{t('history.loading')}</p>}
           </div>
         </div>

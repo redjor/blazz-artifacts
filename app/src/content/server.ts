@@ -14,7 +14,7 @@ import { clientIp } from '../http.ts';
 import { pickLocale, tr, type Locale } from '../i18n.ts';
 import type { RateLimiter } from '../ratelimit.ts';
 import {
-  getArtifact, getArtifactBySlug, getLinkByHash, getProject, getVersion, listFolderArtifacts, type Artifact, type Project, type ShareLink, type Version,
+  getArtifact as getWorkingArtifact, getArtifactBySlug as getWorkingArtifactBySlug, publishedArtifact, getLinkByHash, getProject, getVersion, listFolderArtifacts as listWorkingFolderArtifacts, type Artifact, type Project, type ShareLink, type Version,
 } from '../repo.ts';
 import { thumbPath, versionDir } from '../storage.ts';
 import { THUMB_MIME } from '../thumbs.ts';
@@ -32,7 +32,7 @@ import { injectShim } from './shim.ts';
 import { contentTypeFor } from './mime.ts';
 import { folderUnlockPage, notFoundPage, unlockPage } from './pages.ts';
 import { artifactUrl, encodePath, parseArtifactPath, sanitizeRest } from './paths.ts';
-import { checkPathSig, checkPinnedPathSig, isPinnedSig, signPath } from './signing.ts';
+import { checkPathSig, checkPinnedPathSig, isPinnedSig, signPath, signPinnedPath } from './signing.ts';
 
 const SHIM_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -41,6 +41,9 @@ export interface ContentDeps { db: Db; cfg: Config; keys: Keys; codeLimiter: Rat
 // Public content server. Imports no admin route, by construction.
 export function createContentApp(deps: ContentDeps): Hono {
   const { db, cfg, keys, codeLimiter } = deps;
+  const getArtifact = (db: Db, id: string) => { const a = getWorkingArtifact(db, id); return a && publishedArtifact(a); };
+  const getArtifactBySlug = (db: Db, slug: string) => { const a = getWorkingArtifactBySlug(db, slug); return a && publishedArtifact(a); };
+  const listFolderArtifacts = (db: Db, name: string) => listWorkingFolderArtifacts(db, name).map(publishedArtifact).filter(a => a.current_version_id);
   const nowMs = () => (deps.now ?? Date.now)();
   const nowS = () => Math.floor(nowMs() / 1000);
   const adminOrigin = hubOrigins(cfg).join(' ');
@@ -60,7 +63,7 @@ export function createContentApp(deps: ContentDeps): Hono {
     c.res.headers.set('X-Content-Type-Options', 'nosniff');
     c.res.headers.set('Referrer-Policy', 'no-referrer');
     // Signed-path files set SAMEORIGIN (the artifact frame page, design 10); everything else is never framed.
-    if (!c.res.headers.has('X-Frame-Options')) c.res.headers.set('X-Frame-Options', 'DENY');
+    if (!c.res.headers.has('X-Frame-Options') && !(c.req.path.startsWith('/embed/') && c.res.status === 200)) c.res.headers.set('X-Frame-Options', 'DENY');
     // Only served files (200) set their own cache; nothing else may ever be cached.
     if (!c.res.headers.has('Cache-Control')) c.res.headers.set('Cache-Control', 'no-store');
     if (!c.res.headers.has('Content-Security-Policy')) c.res.headers.set('Content-Security-Policy', SANDBOX_STATIC);
@@ -166,7 +169,7 @@ export function createContentApp(deps: ContentDeps): Hono {
   function framePage(c: Context, art: Artifact, v: Version, sig: string, path: { href: string; title: string }[], folder: Project | null = null) {
     const kind = v.kind ?? art.kind;
     const base = `/a/${art.slug}/${sig}/`;
-    const originalFile = kind === 'markdown' ? 'source.md' : kind === 'json' ? 'source.json' : kind === 'pdf' ? v.entry_path : null;
+    const originalFile = /\.tsx$/i.test(v.original_name) ? 'source.tsx' : /\.jsx$/i.test(v.original_name) ? 'source.jsx' : kind === 'markdown' ? 'source.md' : kind === 'json' ? 'source.json' : kind === 'pdf' ? v.entry_path : null;
     // Screen sizes for pages that lay themselves out (HTML, sites); readers and PDFs follow the window.
     const sized = kind === 'html' || kind === 'site';
     const screen = sized ? parseScreen(c.req.query('w')) : null;
@@ -190,7 +193,7 @@ export function createContentApp(deps: ContentDeps): Hono {
     const parsed = parseArtifactPath(new URL(c.req.url).pathname);
     if (!parsed) return notFound(c);
     const art = getArtifactBySlug(db, parsed.slug);
-    if (!art?.current_version_id) return notFound(c);
+    if (!art || (!art.current_version_id && !parsed.sig?.startsWith('~p'))) return notFound(c);
 
     if (parsed.sig) {
       if (isPinnedSig(parsed.sig)) {
@@ -202,7 +205,7 @@ export function createContentApp(deps: ContentDeps): Hono {
       const check = checkPathSig(keys.pathSig, art, parsed.sig, nowS());
       if (check === 'forged') return notFound(c);
       if (check === 'stale') return redirect(c, artifactUrl(art.slug, parsed.rest));
-      return serveFile(c, art, getVersion(db, art.current_version_id), parsed.rest);
+      return serveFile(c, art, getVersion(db, art.current_version_id!), parsed.rest);
     }
 
     if (art.visibility === 'private') return notFound(c);
@@ -213,7 +216,7 @@ export function createContentApp(deps: ContentDeps): Hono {
         return notFound(c);
       }
     }
-    const version = getVersion(db, art.current_version_id);
+    const version = getVersion(db, art.current_version_id!);
     if (!version) return notFound(c);
     const entry = parsed.rest === '' || parsed.rest === version.entry_path;
     if (entry && art.visibility === 'public' && wantsPreview(c)) return artifactPreview(c, art, version);
@@ -224,6 +227,24 @@ export function createContentApp(deps: ContentDeps): Hono {
     const sig = signPath(keys.pathSig, { artifactId: art.id, versionId: version.id, epoch: art.access_epoch }, nowS());
     if (parsed.rest === '' && wantsFrame(c)) return framePage(c, art, version, sig, []);
     return redirect(c, `/a/${art.slug}/${sig}/${encodePath(parsed.rest || version.entry_path)}`);
+  });
+
+  // Embeds are unsigned stable URLs, re-checking visibility and publication on every request.
+  // No grants or admin preview signatures are accepted here.
+  app.get('/embed/*', async c => {
+    const parsed = parseArtifactPath(new URL(c.req.url).pathname.replace(/^\/embed\//, '/a/'));
+    if (!parsed || parsed.sig) return notFound(c);
+    const art = getArtifactBySlug(db, parsed.slug);
+    if (!art?.current_version_id || art.visibility !== 'public') return notFound(c);
+    if (!parsed.rest && !c.req.path.endsWith('/')) return c.redirect(`/embed/${art.slug}/`, 302);
+    const version = getVersion(db, art.current_version_id);
+    const response = await serveFile(c, art, version, parsed.rest || version?.entry_path || '');
+    if (response.status === 200) {
+      response.headers.delete('X-Frame-Options');
+      response.headers.set('Content-Security-Policy', (response.headers.get('Content-Security-Policy') ?? SANDBOX_STATIC).replace(/frame-ancestors[^;]*/, 'frame-ancestors *'));
+      response.headers.set('Cache-Control','no-store');
+    }
+    return response;
   });
 
   app.post('/unlock/:slug', bodyLimit({ maxSize: 4096, onError: (c) => c.text(tr(loc(c), 'request.tooLarge'), 413) }), async (c) => {
@@ -263,7 +284,7 @@ export function createContentApp(deps: ContentDeps): Hono {
     const art = getArtifact(db, link.artifact_id);
     if (!art?.current_version_id || art.visibility !== 'link') return notFound(c);
     if (wantsPreview(c)) {
-      const v = getVersion(db, art.current_version_id);
+      const v = getVersion(db, art.current_version_id!);
       return v ? artifactPreview(c, art, v) : notFound(c);
     }
     if (isHumanNavigation(c)) visits.linkOpen(link.id, nowMs());
@@ -326,7 +347,7 @@ export function createContentApp(deps: ContentDeps): Hono {
   /** `preview`: admin preview signature (cards to signed paths, thumbnails allowed by this signature). */
   function renderFolder(p: Project, preview: string | null, locale: Locale, granting: Project | null): string {
     const now = nowS();
-    const cards = listFolderArtifacts(db, p.name).flatMap((a) => {
+    const cards = (preview ? listWorkingFolderArtifacts(db, p.name) : listFolderArtifacts(db, p.name)).flatMap((a) => {
       const v = a.current_version_id ? getVersion(db, a.current_version_id) : undefined;
       if (!v) return [];
       const g = granting ?? p;
@@ -336,7 +357,7 @@ export function createContentApp(deps: ContentDeps): Hono {
       const thumbUrl = v.thumb_type ? `/d/${p.name}/thumb/${a.id}/${v.id}?${thumbQuery}` : null;
       // Preview: direct signed path (like an artifact admin preview); otherwise entry through the folder, which re-checks everything.
       const href = preview
-        ? `/a/${a.slug}/${signPath(keys.pathSig, { artifactId: a.id, versionId: v.id, epoch: a.access_epoch }, now)}/${encodePath(v.entry_path)}`
+        ? `/a/${a.slug}/${signPinnedPath(keys.pathSig, { artifactId: a.id, versionId: v.id, epoch: a.access_epoch }, now)}/${encodePath(v.entry_path)}`
         : `/d/${p.name}/a/${encodePath(a.slug)}`;
       return [{ href, title: a.title, description: a.description, kind: v.kind ?? a.kind, updatedAt: a.updated_at, versionNumber: v.number, thumbUrl }];
     });
@@ -367,7 +388,7 @@ export function createContentApp(deps: ContentDeps): Hono {
     if (!granting) return denyFolder(c, project);
     const art = getArtifactBySlug(db, c.req.param('slug'));
     if (!art?.current_version_id || art.project !== project!.name) return notFound(c);
-    const version = getVersion(db, art.current_version_id);
+    const version = getVersion(db, art.current_version_id!);
     if (!version) return notFound(c);
     if (wantsPreview(c)) return artifactPreview(c, art, version);
     // Counts as a view of the artifact; the signed redirect that follows never counts.
@@ -392,7 +413,9 @@ export function createContentApp(deps: ContentDeps): Hono {
       !!folderAccess(c, project);
     if (!allowed) return notFound(c);
     const art = getArtifact(db, artifactId);
-    if (!art || art.project !== project.name || art.current_version_id !== versionId) return notFound(c);
+    if (!art || art.project !== project.name) return notFound(c);
+    const adminPreview = checkFolderPreview(keys.folderPreview, project, c.req.query('p'), nowS());
+    if ((adminPreview ? getWorkingArtifact(db, art.id)?.current_version_id : art.current_version_id) !== versionId) return notFound(c);
     const v = getVersion(db, versionId);
     if (!v?.thumb_type || v.artifact_id !== art.id) return notFound(c);
     let data: Buffer;

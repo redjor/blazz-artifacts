@@ -77,6 +77,7 @@ export function openDb(file: string): Db {
   migrateDescriptions(db);
   migrateThemes(db);
   migrateTrash(db);
+  migratePublication(db);
   migrateSearch(db);
   return db;
 }
@@ -96,6 +97,14 @@ function migrateTrash(db: Db): void {
 // Full-text search (design 07): one row per artifact, trashed ones included (results join live_artifacts). Filled by
 // the API (src/search.ts) and, for artifacts without a row, at startup. An FTS5 table cannot gain a column: an index
 // from before descriptions (design 12) is dropped and rebuilt empty, then filled again at startup (indexMissing).
+function migratePublication(db: Db): void {
+  const cols = db.prepare('PRAGMA table_info(artifacts)').all() as { name: string }[];
+  if (!cols.some(c => c.name === 'published_version_id')) {
+    db.exec('ALTER TABLE artifacts ADD COLUMN published_version_id TEXT');
+    db.exec('UPDATE artifacts SET published_version_id = current_version_id');
+  }
+}
+
 function migrateSearch(db: Db): void {
   const cols = db.prepare('PRAGMA table_info(search_index)').all() as { name: string }[];
   if (cols.length && !cols.some((c) => c.name === 'description')) db.exec('DROP TABLE search_index');
