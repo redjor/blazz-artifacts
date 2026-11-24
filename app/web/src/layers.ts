@@ -27,8 +27,8 @@ function sync() {
   document.documentElement.classList.toggle('scroll-locked', !!top);
 }
 
-function onKeyDown(e: KeyboardEvent) {
-  const top = stack.at(-1);
+export function handleLayerKeyDown(e: KeyboardEvent, layers: readonly Layer[], active: Element | null = document.activeElement) {
+  const top = layers.at(-1);
   if (!top) return;
   if (e.key === 'Escape') {
     if (e.defaultPrevented) return;
@@ -36,14 +36,15 @@ function onKeyDown(e: KeyboardEvent) {
     top.onEscape();
     return;
   }
-  if (e.key !== 'Tab' || !top.modal || !top.el.current) return;
+  if (e.key !== 'Tab') return;
+  const modal = [...layers].reverse().find((layer) => layer.modal && layer.el.current);
+  if (!modal?.el.current) return;
   // Tab / Shift+Tab loop inside the modal layer (the rest is inert, but the browser would move to its address bar).
-  const list = focusables(top.el.current);
+  const list = focusables(modal.el.current);
   if (list.length === 0) return;
   const first = list[0];
   const last = list[list.length - 1];
-  const active = document.activeElement;
-  const inside = top.el.current.contains(active);
+  const inside = modal.el.current.contains(active);
   if (e.shiftKey && (active === first || !inside)) {
     e.preventDefault();
     last.focus();
@@ -51,6 +52,10 @@ function onKeyDown(e: KeyboardEvent) {
     e.preventDefault();
     first.focus();
   }
+}
+
+function onKeyDown(e: KeyboardEvent) {
+  handleLayerKeyDown(e, stack);
 }
 
 /** True when a layer (menu, dialog, panel) is open: gallery shortcuts stay quiet. */
