@@ -33,7 +33,7 @@ export function Login({ onDone }: { onDone: () => void }) {
         <label className="block space-y-1 text-sm">
           <span className="text-muted">{t('login.password')}</span>
           <input type="password" autoFocus required value={password} onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-lg border border-line bg-transparent px-3 py-2 hover:border-line-strong" />
+            className="w-full rounded-lg border border-muted bg-transparent px-3 py-2" />
         </label>
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <button disabled={busy} className="w-full rounded-lg bg-ink px-3 py-2 text-sm font-medium text-canvas disabled:opacity-50">
